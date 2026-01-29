@@ -52,5 +52,29 @@
 - [x] Error handling (Ollama not running, model not found).
 - [x] **Test:** Full end-to-end usage flow. Verified DB persistence via script.
 
-## Next Step
-User Manual Acceptance Testing.
+### Phase 5: Chat Management & Organization
+**Goal:** Advanced chat organization with context menus and archive system.
+- [x] Add chat context menus (Move, Rename, Archive, Delete).
+- [x] Implement per-project collapse with localStorage persistence.
+- [x] Add archive system with soft-delete and restore.
+- [x] Add confirmation dialogs for destructive actions.
+- [x] **Test:** Move chats between projects, archive/restore, collapse persistence.
+
+### Phase 6: Context Management & System Instructions
+**Goal:** Handle long conversations without losing context.
+- [x] Implement hybrid context (LLM summaries + sliding window).
+- [x] Add system prompt support (never trimmed from context).
+- [x] Auto-summarize when message count exceeds threshold.
+- [x] Add System Prompt Dialog for custom instructions.
+- [x] **Test:** Long conversations maintain context, system prompts persist.
+
+### Phase 7: Persona System & UX Polish
+**Goal:** Quick persona switching and streaming improvements.
+- [x] Add persona selector with 6 built-in presets.
+- [x] Implement streaming cursor animation.
+- [x] Add project rename with inline editing.
+- [x] Implement alphabetical sorting for projects.
+- [x] **Test:** Persona switching, streaming cursor, project management.
+
+## Status
+All planned phases complete. Ready for production use.

@@ -2,6 +2,58 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0] - 2026-01-28
+
+### Project Management
+- **Project Rename:** Added inline editing for project names with pencil icon, save/cancel buttons, and keyboard shortcuts
+- **Alphabetical Sorting:** Projects are now automatically sorted alphabetically in the sidebar
+
+## [0.7.0] - 2026-01-28
+
+### Persona System
+- **Persona Selector:** Added dropdown in chat header for quick persona switching
+- **Preset Personas:** 6 built-in presets (Default, Coding Assistant, Creative Mode, Debug Mode, Brief Mode, Teacher Mode)
+- **Custom Personas:** Ability to customize system prompts via "Customize..." option
+
+### UI Enhancements
+- **Streaming Cursor:** Added animated cursor effect (`▎`) while AI generates responses
+- **Visual Feedback:** Cursor blinks with smooth animation during streaming
+
+## [0.6.0] - 2026-01-28
+
+### Chat Management
+- **Context Menus:** Added 3-dot dropdown menus on all chats with Move, Rename, Archive, Delete options
+- **Move to Project:** Nested submenu to move chats between Quick Chats and any project
+- **Archive System:** Soft-delete chats to "Archived" section with restore capability
+- **Per-Project Collapse:** Each project's chat list can be independently collapsed/expanded
+- **Collapse Persistence:** Sidebar collapse states are saved to localStorage
+
+### Context Management
+- **Hybrid Context:** Implemented LLM-generated summaries + sliding window for long conversations
+- **Auto-Summarization:** Automatically triggers when message count exceeds 30
+- **System Instructions:** Added customizable system prompts that are never trimmed from context
+- **System Prompt Dialog:** UI for editing system instructions with quick example buttons
+
+### New Components
+- `ChatContextMenu.tsx`: Radix dropdown menu with nested submenus
+- `DeleteConfirmDialog.tsx`: Confirmation modal for permanent deletion
+- `RenameDialog.tsx`: Dialog for editing chat titles
+- `SystemPromptDialog.tsx`: Dialog for editing system instructions
+- `PersonaSelector.tsx`: Dropdown for persona/system prompt selection
+
+### New Hooks
+- `useLocalStorage.ts`: Generic localStorage hook with SSR safety
+- `useCollapseState.ts`: Manages sidebar collapse states with persistence
+- `usePersonas.ts`: Manages persona presets and custom system prompts
+
+### Database Schema
+- Added `archived` boolean field to chats table
+- Added `systemPrompt` text field to chats table
+- Added `summary` and `summaryUpToMessageId` fields for context management
+
+### New API Routes
+- `/api/summarize`: LLM-generated conversation summaries for context compression
+
 ## [0.5.0] - 2026-01-28
 
 ### Breaking Changes - AI SDK v6 Migration

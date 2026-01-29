@@ -32,6 +32,7 @@ This is a **Next.js 16 App Router** chat application with a hybrid AI backend (G
 3. **API Routes**:
    - `/api/chat` - Streaming LLM responses via Vercel AI SDK's `streamText`
    - `/api/models` - Returns available models (Gemini + local Ollama models)
+   - `/api/summarize` - LLM-generated conversation summaries for context compression
 
 ### Database Layer
 
@@ -40,15 +41,34 @@ This is a **Next.js 16 App Router** chat application with a hybrid AI backend (G
 - DB connection: `src/db/index.ts`
 - Schema migrations: `npx drizzle-kit push`
 
+**Chats table includes:**
+- `archived` (boolean) - Soft delete flag
+- `systemPrompt` (text) - Custom system instructions
+- `summary` (text) - LLM-generated conversation summary
+- `summaryUpToMessageId` (integer) - Last message ID included in summary
+
 ### Component Structure
 
 ```
 src/components/chat/
-├── Sidebar.tsx        # Project/chat navigation
-├── ChatHeader.tsx     # Model selector, chat title editing
-├── MessagesList.tsx   # Renders chat messages with markdown
-├── CodeBlock.tsx      # Syntax-highlighted code blocks with copy button
+├── Sidebar.tsx           # Project/chat navigation with collapse persistence
+├── ChatHeader.tsx        # Model selector, persona selector, chat title editing
+├── ChatContextMenu.tsx   # 3-dot dropdown with Move/Rename/Archive/Delete
+├── MessagesList.tsx      # Renders chat messages with markdown and streaming cursor
+├── CodeBlock.tsx         # Syntax-highlighted code blocks with copy button
 └── LoadingSkeletons.tsx
+
+src/components/ui/
+├── ModelSelect.tsx       # Model dropdown with Cloud/Local grouping
+├── PersonaSelector.tsx   # Persona/system prompt quick switcher
+├── DeleteConfirmDialog.tsx # Confirmation modal for deletions
+├── RenameDialog.tsx      # Dialog for renaming chats
+└── SystemPromptDialog.tsx # Dialog for editing system instructions
+
+src/hooks/
+├── useLocalStorage.ts    # Generic localStorage hook with SSR safety
+├── useCollapseState.ts   # Sidebar collapse state with persistence
+└── usePersonas.ts        # Persona presets management
 ```
 
 ### AI Provider Selection

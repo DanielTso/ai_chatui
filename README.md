@@ -5,9 +5,14 @@ A beautiful, local-first AI chat interface built with Next.js, Tailwind CSS, and
 ## Features
 - **Hybrid AI:** Seamlessly switch between local models (Ollama) and cloud models (Google Gemini).
 - **Privacy:** Chats are stored locally in a SQLite database (`sqlite.db`).
-- **Organization:** Group chats into Projects.
+- **Organization:** Group chats into Projects with rename and alphabetical sorting.
+- **Chat Management:** Context menus for move, rename, archive, and delete operations.
+- **Persona System:** Quick persona switching with 6 built-in presets and custom system prompts.
+- **Context Management:** Hybrid summarization for long conversations (auto-triggers at 30+ messages).
+- **Archive System:** Soft-delete chats with restore capability.
 - **UI:** Modern Glassmorphism design with Dark/Light mode.
-- **Markdown:** Renders code blocks and formatted text.
+- **Streaming Cursor:** Animated cursor effect while AI generates responses.
+- **Markdown:** Renders code blocks and formatted text with copy button.
 
 ## Prerequisites
 1.  **Ollama** (Optional): For local models, install and run `ollama serve`.

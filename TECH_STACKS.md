@@ -11,6 +11,10 @@ This document outlines the final technology choices used in the "Glassmorphic Lo
 *   **Lucide React:** For lightweight, consistent iconography.
 *   **Next-Themes:** For reliable Dark/Light mode switching.
 *   **React Markdown:** To render AI responses with proper formatting (code blocks, bold text, etc.).
+*   **Radix UI:** Headless UI primitives for accessible components.
+    *   `@radix-ui/react-dropdown-menu` - Context menus with nested submenus
+    *   `@radix-ui/react-dialog` - Modal dialogs (delete confirm, rename, system prompt)
+*   **Framer Motion:** For smooth message animations and transitions.
 
 ## AI & Streaming
 *   **Vercel AI SDK v6 (`ai@^6.0`, `@ai-sdk/react@^3.0`):** A powerful library for handling streaming responses from LLMs. Upgraded to v6 for latest features.
