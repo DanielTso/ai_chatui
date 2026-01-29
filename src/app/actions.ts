@@ -2,7 +2,7 @@
 
 import { db } from '@/db'
 import { projects, chats, messages } from '@/db/schema'
-import { eq, desc, isNull, isNotNull, and } from 'drizzle-orm'
+import { eq, desc, isNull, isNotNull, and, gt, asc, count } from 'drizzle-orm'
 
 export async function getProjects() {
   return await db.select().from(projects).all()
@@ -87,4 +87,76 @@ export async function restoreChat(id: number) {
 
 export async function getArchivedChats() {
   return await db.select().from(chats).where(eq(chats.archived, true)).orderBy(desc(chats.createdAt)).all()
+}
+
+// Context Management Actions
+
+export async function getChatWithContext(chatId: number) {
+  // Get chat with summary and system prompt for context building
+  const result = await db.select().from(chats).where(eq(chats.id, chatId)).get()
+  return result
+}
+
+// Alias for backward compatibility
+export async function getChatWithSummary(chatId: number) {
+  return getChatWithContext(chatId)
+}
+
+export async function updateChatSystemPrompt(chatId: number, systemPrompt: string | null) {
+  return await db.update(chats)
+    .set({ systemPrompt })
+    .where(eq(chats.id, chatId))
+    .returning()
+}
+
+export async function updateChatSummary(chatId: number, summary: string, summaryUpToMessageId: number) {
+  return await db.update(chats)
+    .set({ summary, summaryUpToMessageId })
+    .where(eq(chats.id, chatId))
+    .returning()
+}
+
+export async function getMessageCount(chatId: number) {
+  const result = await db.select({ count: count() })
+    .from(messages)
+    .where(eq(messages.chatId, chatId))
+    .get()
+  return result?.count ?? 0
+}
+
+export async function getMessagesForSummarization(chatId: number, upToMessageId: number) {
+  // Get messages up to (and including) the specified message ID for summarization
+  // These are the older messages that will be compressed into a summary
+  const result = await db.select()
+    .from(messages)
+    .where(and(
+      eq(messages.chatId, chatId),
+      // Include messages with ID <= upToMessageId
+    ))
+    .orderBy(asc(messages.createdAt))
+    .all()
+
+  // Filter to only include messages up to the cutoff point
+  return result.filter(m => m.id <= upToMessageId)
+}
+
+export async function getRecentMessagesAfterSummary(chatId: number, afterMessageId: number | null) {
+  // Get messages after the summary point (these stay in full detail)
+  if (afterMessageId === null) {
+    // No summary yet, return all messages
+    return await db.select()
+      .from(messages)
+      .where(eq(messages.chatId, chatId))
+      .orderBy(asc(messages.createdAt))
+      .all()
+  }
+
+  return await db.select()
+    .from(messages)
+    .where(and(
+      eq(messages.chatId, chatId),
+      gt(messages.id, afterMessageId)
+    ))
+    .orderBy(asc(messages.createdAt))
+    .all()
 }

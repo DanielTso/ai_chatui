@@ -12,6 +12,9 @@ export const chats = sqliteTable('chats', {
   projectId: integer('project_id').references(() => projects.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
   archived: integer('archived', { mode: 'boolean' }).default(false),
+  systemPrompt: text('system_prompt'), // Per-chat system instruction (never trimmed)
+  summary: text('summary'), // Compressed context from older messages
+  summaryUpToMessageId: integer('summary_up_to_message_id'), // Last message ID included in summary
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
 }, (table) => ({
   projectIdIdx: index('idx_chats_project_id').on(table.projectId),

@@ -1,8 +1,9 @@
 "use client"
 
 import { memo, useState, useRef, useEffect } from "react"
-import { MessageSquare, Edit2, Check, X } from "lucide-react"
+import { MessageSquare, Edit2, Check, X, Bot } from "lucide-react"
 import { ModelSelect } from "@/components/ui/ModelSelect"
+import { cn } from "@/lib/utils"
 
 interface Model {
   name: string
@@ -15,8 +16,10 @@ interface ChatHeaderProps {
   chatTitle: string | undefined
   models: Model[]
   selectedModel: string
+  systemPrompt: string | null
   onModelChange: (model: string) => void
   onTitleChange?: (id: number, title: string) => void
+  onSystemPromptClick?: () => void
 }
 
 export const ChatHeader = memo(function ChatHeader({
@@ -24,8 +27,10 @@ export const ChatHeader = memo(function ChatHeader({
   chatTitle,
   models,
   selectedModel,
+  systemPrompt,
   onModelChange,
   onTitleChange,
+  onSystemPromptClick,
 }: ChatHeaderProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editedTitle, setEditedTitle] = useState(chatTitle || "")
@@ -111,13 +116,35 @@ export const ChatHeader = memo(function ChatHeader({
           </div>
         )}
       </div>
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">Model:</span>
-        <ModelSelect
-          models={models}
-          value={selectedModel}
-          onChange={onModelChange}
-        />
+      <div className="flex items-center gap-3">
+        {chatId && onSystemPromptClick && (
+          <button
+            onClick={onSystemPromptClick}
+            className={cn(
+              "flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-colors",
+              systemPrompt
+                ? "bg-primary/20 text-primary hover:bg-primary/30"
+                : "text-muted-foreground hover:bg-white/10 hover:text-foreground"
+            )}
+            title={systemPrompt ? "Edit system instruction" : "Add system instruction"}
+          >
+            <Bot className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">
+              {systemPrompt ? "Instruction" : "Add Instruction"}
+            </span>
+            {systemPrompt && (
+              <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+            )}
+          </button>
+        )}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Model:</span>
+          <ModelSelect
+            models={models}
+            value={selectedModel}
+            onChange={onModelChange}
+          />
+        </div>
       </div>
     </header>
   )

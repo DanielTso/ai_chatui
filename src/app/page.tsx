@@ -7,13 +7,14 @@ import { DefaultChatTransport } from "ai"
 import { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import TextareaAutosize from "react-textarea-autosize"
 import { toast } from "sonner"
-import { getProjects, createProject, getChats, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats } from "./actions"
+import { getProjects, createProject, getChats, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getMessageCount, getChatWithContext, updateChatSystemPrompt } from "./actions"
 import { Sidebar } from "@/components/chat/Sidebar"
 import { ChatHeader } from "@/components/chat/ChatHeader"
 import { MessagesList } from "@/components/chat/MessagesList"
 import { CommandPalette } from "@/components/ui/CommandPalette"
 import { DeleteConfirmDialog } from "@/components/ui/DeleteConfirmDialog"
 import { RenameDialog } from "@/components/ui/RenameDialog"
+import { SystemPromptDialog } from "@/components/ui/SystemPromptDialog"
 
 interface Model {
   name: string
@@ -45,6 +46,10 @@ export default function Home() {
   const [standaloneChats, setStandaloneChats] = useState<Chat[]>([])
   const [activeChatId, setActiveChatId] = useState<number | null>(null)
 
+  // Ref for activeChatId (must be after state declaration)
+  const activeChatIdRef = useRef(activeChatId)
+  activeChatIdRef.current = activeChatId
+
   // Command palette state
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
 
@@ -56,12 +61,56 @@ export default function Home() {
   const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null)
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
   const [renameTarget, setRenameTarget] = useState<{ id: number; title: string } | null>(null)
+  const [systemPromptDialogOpen, setSystemPromptDialogOpen] = useState(false)
+  const [currentSystemPrompt, setCurrentSystemPrompt] = useState<string | null>(null)
 
-  // Create transport with body as function to always get current model
+  // Create transport with body as function to always get current values
   const transport = useMemo(() => new DefaultChatTransport({
     api: '/api/chat',
-    body: () => ({ model: selectedModelRef.current }),
+    body: () => ({
+      model: selectedModelRef.current,
+      chatId: activeChatIdRef.current,
+    }),
   }), [])
+
+  // Context management configuration
+  const SUMMARIZATION_THRESHOLD = 30 // Trigger summarization when message count exceeds this
+  const MESSAGES_TO_KEEP = 10 // Keep this many recent messages after summarization
+
+  const triggerSummarization = useCallback(async (chatId: number, messageCount: number) => {
+    if (messageCount <= SUMMARIZATION_THRESHOLD) return
+
+    // Calculate cutoff: summarize all but the most recent MESSAGES_TO_KEEP
+    const messages = await getChatMessages(chatId)
+    if (messages.length <= MESSAGES_TO_KEEP) return
+
+    const cutoffIndex = messages.length - MESSAGES_TO_KEEP
+    const cutoffMessageId = messages[cutoffIndex - 1]?.id
+
+    if (!cutoffMessageId) return
+
+    console.log(`[Summarization] Triggering for chat ${chatId}, cutoff at message ${cutoffMessageId}`)
+
+    try {
+      const response = await fetch('/api/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chatId,
+          cutoffMessageId,
+          model: selectedModelRef.current,
+        }),
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        console.log(`[Summarization] Complete: ${result.summarizedMessageCount} messages summarized`)
+        toast.success('Conversation summarized for better context management')
+      }
+    } catch (error) {
+      console.error('[Summarization] Error:', error)
+    }
+  }, [])
 
   const {
     messages,
@@ -73,14 +122,23 @@ export default function Home() {
     transport,
     onFinish: async ({ message }) => {
       console.log('[onFinish] Message received:', message)
+      const currentChatId = activeChatIdRef.current
+
       // Extract text content from message parts
       const textContent = message.parts
         .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
         .map(part => part.text)
         .join('')
-      if (activeChatId && textContent.trim()) {
-        await saveMessage(activeChatId, 'assistant', textContent)
+
+      if (currentChatId && textContent.trim()) {
+        await saveMessage(currentChatId, 'assistant', textContent)
         console.log('[onFinish] Assistant message saved to DB')
+
+        // Check if summarization is needed
+        const messageCount = await getMessageCount(currentChatId)
+        if (messageCount > SUMMARIZATION_THRESHOLD) {
+          triggerSummarization(currentChatId, messageCount)
+        }
       }
     }
   })
@@ -194,12 +252,17 @@ export default function Home() {
     fetchModels()
   }, [loadProjects, loadStandaloneChats, loadAllProjectChats, loadArchivedChats, fetchModels])
 
-  // Load Messages when Chat Changes
+  // Load Messages and System Prompt when Chat Changes
   useEffect(() => {
     if (activeChatId) {
       loadMessages(activeChatId)
+      // Load system prompt for this chat
+      getChatWithContext(activeChatId).then(chat => {
+        setCurrentSystemPrompt(chat?.systemPrompt ?? null)
+      })
     } else {
       setMessages([])
+      setCurrentSystemPrompt(null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChatId])
@@ -410,6 +473,18 @@ export default function Home() {
     }
   }, [chats, standaloneChats])
 
+  const handleSaveSystemPrompt = useCallback(async (prompt: string | null) => {
+    if (!activeChatId) return
+    try {
+      await updateChatSystemPrompt(activeChatId, prompt)
+      setCurrentSystemPrompt(prompt)
+      toast.success(prompt ? "System instruction saved" : "System instruction cleared")
+    } catch (e) {
+      console.error(e)
+      setError("Failed to update system instruction.")
+    }
+  }, [activeChatId])
+
   // Get the current chat title from either chats or standaloneChats
   const currentChatTitle = activeChatId
     ? chats.find(c => c.id === activeChatId)?.title || standaloneChats.find(c => c.id === activeChatId)?.title
@@ -446,8 +521,10 @@ export default function Home() {
           chatTitle={currentChatTitle}
           models={models}
           selectedModel={selectedModel}
+          systemPrompt={currentSystemPrompt}
           onModelChange={setSelectedModel}
           onTitleChange={handleUpdateChatTitle}
+          onSystemPromptClick={() => setSystemPromptDialogOpen(true)}
         />
 
         {/* Error Banner */}
@@ -531,6 +608,14 @@ export default function Home() {
         onOpenChange={setRenameDialogOpen}
         currentTitle={renameTarget?.title ?? ""}
         onRename={handleConfirmRename}
+      />
+
+      {/* System Prompt Dialog */}
+      <SystemPromptDialog
+        open={systemPromptDialogOpen}
+        onOpenChange={setSystemPromptDialogOpen}
+        currentPrompt={currentSystemPrompt}
+        onSave={handleSaveSystemPrompt}
       />
     </div>
   )
