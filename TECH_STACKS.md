@@ -13,9 +13,12 @@ This document outlines the final technology choices used in the "Glassmorphic Lo
 *   **React Markdown:** To render AI responses with proper formatting (code blocks, bold text, etc.).
 
 ## AI & Streaming
-*   **Vercel AI SDK (v3.4):** A powerful library for handling streaming responses from LLMs. We specifically chose v3.4 for stability and compatibility.
-*   **Ollama AI Provider:** For connecting to locally hosted models (Llama 3, Mistral, etc.) via `ollama-ai-provider`.
-*   **Google Generative AI SDK:** For integrating Gemini cloud models (Gemini 3, Gemini 2.5, Gemini 1.5).
+*   **Vercel AI SDK v6 (`ai@^6.0`, `@ai-sdk/react@^3.0`):** A powerful library for handling streaming responses from LLMs. Upgraded to v6 for latest features.
+    *   Uses `DefaultChatTransport` for API communication
+    *   Uses `UIMessage` format with `parts` array (not `content` string)
+    *   Server uses `convertToModelMessages()` and `toUIMessageStreamResponse()`
+*   **Ollama AI Provider (`ai-sdk-ollama`):** For connecting to locally hosted models (Llama 3, Mistral, Qwen, etc.).
+*   **Google Generative AI SDK (`@ai-sdk/google`):** For integrating Gemini cloud models (Gemini 3, Gemini 2.5, etc.).
 
 ## Data Persistence
 *   **SQLite (better-sqlite3):** A high-performance, serverless SQL database perfect for local, private data storage.

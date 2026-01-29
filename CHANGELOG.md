@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-01-28
+
+### Breaking Changes - AI SDK v6 Migration
+- **SDK Upgrade:** Migrated from Vercel AI SDK v3.4 to v6 (`ai@^6.0`, `@ai-sdk/react@^3.0`)
+- **Client API:** Replaced old `useChat` API with new transport-based approach
+  - Now uses `DefaultChatTransport` for API communication
+  - `sendMessage({ text })` replaces `handleSubmit`
+  - `status` replaces `isLoading` ('ready' | 'streaming' | 'submitted' | 'error')
+  - Manual input state management (no built-in `input`, `handleInputChange`)
+- **Message Format:** Changed from `content` string to `parts` array structure
+  - Messages now use `UIMessage` type with `parts: [{ type: 'text', text: string }]`
+
+### Bug Fixes
+- **Build:** Fixed `baseUrl` → `baseURL` typo in Ollama provider config
+- **Build:** Removed unsupported `maxTokens` property from `streamText`
+- **API:** Added `convertToModelMessages()` to convert UIMessage → ModelMessage for `streamText`
+- **API:** Changed response from `toTextStreamResponse()` to `toUIMessageStreamResponse()`
+- **Model Selection:** Fixed stale closure issue using ref pattern for dynamic model selection
+- **Types:** Added proper typing for `ollamaModels` array (replacing `any`)
+- **Lint:** Removed unused imports (`asc`, `formatTime` helpers)
+- **Lint:** Removed unused `theme` prop from Sidebar component
+
+### Documentation
+- Added `CLAUDE.md` with AI SDK v6 implementation details and common gotchas
+- Updated all documentation to reflect v6 changes
+
 ## [0.4.0] - 2026-01-28
 
 ### UI/UX Enhancements

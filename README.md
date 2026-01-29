@@ -38,9 +38,10 @@ A beautiful, local-first AI chat interface built with Next.js, Tailwind CSS, and
 - **Framework:** Next.js 16 (App Router)
 - **Styling:** Tailwind CSS v4
 - **Database:** SQLite + Drizzle ORM
-- **AI:** Vercel AI SDK (v3.4) + Ollama + Google Generative AI
+- **AI:** Vercel AI SDK v6 (`ai@^6.0`, `@ai-sdk/react@^3.0`) + Ollama + Google Generative AI
 
 ## Documentation
 - [Version History (Changelog)](./CHANGELOG.md)
 - [Project Plan](./PLAN.md)
 - [Tech Stack Details](./TECH_STACKS.md)
+- [Claude Code Guide](./CLAUDE.md)
