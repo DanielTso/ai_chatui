@@ -1,6 +1,6 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOllama } from 'ai-sdk-ollama';
-import { streamText } from 'ai';
+import { streamText, convertToModelMessages, type UIMessage } from 'ai';
 
 // Create singleton provider instances at module level for better performance
 const google = process.env.GOOGLE_GENERATIVE_AI_API_KEY
@@ -19,6 +19,7 @@ export async function POST(req: Request) {
     const modelName = model || 'gemini-3-flash-preview';
 
     console.log(`[API] Request for model: ${modelName}`);
+    console.log(`[API] Messages count: ${messages?.length}`);
 
     // Determine which provider to use based on model name
     const isGeminiModel = modelName.startsWith('gemini');
@@ -34,12 +35,15 @@ export async function POST(req: Request) {
       selectedModel = ollama(modelName);
     }
 
+    // Convert UIMessage to ModelMessage format for streamText
+    const modelMessages = await convertToModelMessages(messages as UIMessage[]);
+
     const result = streamText({
       model: selectedModel,
-      messages,
+      messages: modelMessages,
     });
 
-    return result.toTextStreamResponse();
+    return result.toUIMessageStreamResponse();
 
   } catch (error) {
     console.error("❌ [API Error]:", error);
