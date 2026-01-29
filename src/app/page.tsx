@@ -7,11 +7,13 @@ import { DefaultChatTransport } from "ai"
 import { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import TextareaAutosize from "react-textarea-autosize"
 import { toast } from "sonner"
-import { getProjects, createProject, getChats, createChat, getChatMessages, saveMessage, deleteProject, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat } from "./actions"
+import { getProjects, createProject, getChats, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats } from "./actions"
 import { Sidebar } from "@/components/chat/Sidebar"
 import { ChatHeader } from "@/components/chat/ChatHeader"
 import { MessagesList } from "@/components/chat/MessagesList"
 import { CommandPalette } from "@/components/ui/CommandPalette"
+import { DeleteConfirmDialog } from "@/components/ui/DeleteConfirmDialog"
+import { RenameDialog } from "@/components/ui/RenameDialog"
 
 interface Model {
   name: string
@@ -21,7 +23,7 @@ interface Model {
 
 // Types matching DB schema roughly
 type Project = { id: number; name: string }
-type Chat = { id: number; projectId: number | null; title: string }
+type Chat = { id: number; projectId: number | null; title: string; archived?: boolean | null }
 
 export default function Home() {
   const { setTheme, theme } = useTheme()
@@ -45,6 +47,15 @@ export default function Home() {
 
   // Command palette state
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+
+  // Archived chats state
+  const [archivedChats, setArchivedChats] = useState<Chat[]>([])
+
+  // Dialog states
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null)
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false)
+  const [renameTarget, setRenameTarget] = useState<{ id: number; title: string } | null>(null)
 
   // Create transport with body as function to always get current model
   const transport = useMemo(() => new DefaultChatTransport({
@@ -139,9 +150,19 @@ export default function Home() {
     }
   }, [])
 
-  const loadChats = useCallback(async (pid: number) => {
+  const loadArchivedChats = useCallback(async () => {
     try {
-      const c = await getChats(pid)
+      const c = await getArchivedChats()
+      setArchivedChats(c)
+    } catch (e) {
+      console.error(e)
+      setError("Failed to load archived chats.")
+    }
+  }, [])
+
+  const loadAllProjectChats = useCallback(async () => {
+    try {
+      const c = await getAllProjectChats()
       setChats(c)
     } catch (e) {
       console.error(e)
@@ -164,21 +185,14 @@ export default function Home() {
     }
   }, [setMessages])
 
-  // Load Projects and standalone chats on mount
+  // Load Projects and all chats on mount
   useEffect(() => {
     loadProjects()
     loadStandaloneChats()
+    loadAllProjectChats()
+    loadArchivedChats()
     fetchModels()
-  }, [loadProjects, loadStandaloneChats, fetchModels])
-
-  // Load Chats when Project Changes
-  useEffect(() => {
-    if (activeProjectId) {
-      loadChats(activeProjectId)
-    } else {
-      setChats([])
-    }
-  }, [activeProjectId, loadChats])
+  }, [loadProjects, loadStandaloneChats, loadAllProjectChats, loadArchivedChats, fetchModels])
 
   // Load Messages when Chat Changes
   useEffect(() => {
@@ -315,13 +329,64 @@ export default function Home() {
     toast.success("Project deleted")
   }, [projects, activeProjectId])
 
-  const handleDeleteChat = useCallback(async (id: number) => {
-    await deleteChat(id)
-    setChats(chats.filter(c => c.id !== id))
-    setStandaloneChats(standaloneChats.filter(c => c.id !== id))
-    if (activeChatId === id) setActiveChatId(null)
+  const handleRequestDelete = useCallback((id: number) => {
+    setDeleteTargetId(id)
+    setDeleteDialogOpen(true)
+  }, [])
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deleteTargetId) return
+    await deleteChat(deleteTargetId)
+    setChats(chats.filter(c => c.id !== deleteTargetId))
+    setStandaloneChats(standaloneChats.filter(c => c.id !== deleteTargetId))
+    setArchivedChats(archivedChats.filter(c => c.id !== deleteTargetId))
+    if (activeChatId === deleteTargetId) setActiveChatId(null)
+    setDeleteTargetId(null)
     toast.success("Chat deleted")
-  }, [chats, standaloneChats, activeChatId])
+  }, [deleteTargetId, chats, standaloneChats, archivedChats, activeChatId])
+
+  const handleRequestRename = useCallback((id: number) => {
+    const chat = [...chats, ...standaloneChats, ...archivedChats].find(c => c.id === id)
+    if (chat) {
+      setRenameTarget({ id: chat.id, title: chat.title })
+      setRenameDialogOpen(true)
+    }
+  }, [chats, standaloneChats, archivedChats])
+
+  const handleConfirmRename = useCallback(async (newTitle: string) => {
+    if (!renameTarget) return
+    await updateChatTitle(renameTarget.id, newTitle)
+    setChats(chats.map(c => c.id === renameTarget.id ? { ...c, title: newTitle } : c))
+    setStandaloneChats(standaloneChats.map(c => c.id === renameTarget.id ? { ...c, title: newTitle } : c))
+    setArchivedChats(archivedChats.map(c => c.id === renameTarget.id ? { ...c, title: newTitle } : c))
+    setRenameTarget(null)
+    toast.success("Chat renamed")
+  }, [renameTarget, chats, standaloneChats, archivedChats])
+
+  const handleMoveChat = useCallback(async (chatId: number, projectId: number | null) => {
+    await moveChatToProject(chatId, projectId)
+    // Refresh all chat lists
+    loadStandaloneChats()
+    loadAllProjectChats()
+    toast.success(projectId ? "Chat moved to project" : "Chat moved to Quick Chats")
+  }, [loadAllProjectChats, loadStandaloneChats])
+
+  const handleArchiveChat = useCallback(async (chatId: number) => {
+    await archiveChat(chatId)
+    setChats(chats.filter(c => c.id !== chatId))
+    setStandaloneChats(standaloneChats.filter(c => c.id !== chatId))
+    if (activeChatId === chatId) setActiveChatId(null)
+    loadArchivedChats()
+    toast.success("Chat archived")
+  }, [chats, standaloneChats, activeChatId, loadArchivedChats])
+
+  const handleRestoreChat = useCallback(async (chatId: number) => {
+    await restoreChat(chatId)
+    loadArchivedChats()
+    loadStandaloneChats()
+    loadAllProjectChats()
+    toast.success("Chat restored")
+  }, [loadArchivedChats, loadStandaloneChats, loadAllProjectChats])
 
   const handleSelectProject = useCallback((id: number) => {
     setActiveProjectId(id)
@@ -358,6 +423,7 @@ export default function Home() {
         chats={chats}
         activeChatId={activeChatId}
         standaloneChats={standaloneChats}
+        archivedChats={archivedChats}
         onThemeToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
         onCreateProject={handleCreateProject}
         onCreateChat={handleCreateChat}
@@ -366,7 +432,11 @@ export default function Home() {
         onSelectChat={setActiveChatId}
         onSelectStandaloneChat={handleSelectStandaloneChat}
         onDeleteProject={handleDeleteProject}
-        onDeleteChat={handleDeleteChat}
+        onMoveChat={handleMoveChat}
+        onRenameChat={handleRequestRename}
+        onArchiveChat={handleArchiveChat}
+        onRestoreChat={handleRestoreChat}
+        onDeleteChat={handleRequestDelete}
       />
 
       {/* Main Chat Area */}
@@ -444,6 +514,23 @@ export default function Home() {
         onSelectProject={handleSelectProject}
         onSelectChat={setActiveChatId}
         onSelectStandaloneChat={handleSelectStandaloneChat}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete Chat"
+        description="Are you sure you want to delete this chat? This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+      />
+
+      {/* Rename Dialog */}
+      <RenameDialog
+        open={renameDialogOpen}
+        onOpenChange={setRenameDialogOpen}
+        currentTitle={renameTarget?.title ?? ""}
+        onRename={handleConfirmRename}
       />
     </div>
   )

@@ -2,7 +2,7 @@
 
 import { db } from '@/db'
 import { projects, chats, messages } from '@/db/schema'
-import { eq, desc, isNull } from 'drizzle-orm'
+import { eq, desc, isNull, isNotNull, and } from 'drizzle-orm'
 
 export async function getProjects() {
   return await db.select().from(projects).all()
@@ -17,11 +17,22 @@ export async function deleteProject(id: number) {
 }
 
 export async function getChats(projectId: number) {
-  return await db.select().from(chats).where(eq(chats.projectId, projectId)).orderBy(desc(chats.createdAt)).all()
+  return await db.select().from(chats).where(
+    and(eq(chats.projectId, projectId), eq(chats.archived, false))
+  ).orderBy(desc(chats.createdAt)).all()
+}
+
+export async function getAllProjectChats() {
+  // Get all non-archived chats that belong to a project
+  return await db.select().from(chats).where(
+    and(isNotNull(chats.projectId), eq(chats.archived, false))
+  ).orderBy(desc(chats.createdAt)).all()
 }
 
 export async function getStandaloneChats() {
-  return await db.select().from(chats).where(isNull(chats.projectId)).orderBy(desc(chats.createdAt)).all()
+  return await db.select().from(chats).where(
+    and(isNull(chats.projectId), eq(chats.archived, false))
+  ).orderBy(desc(chats.createdAt)).all()
 }
 
 export async function createChat(projectId: number, title: string) {
@@ -60,4 +71,20 @@ export async function getChatMessages(chatId: number, limit: number = 100) {
 
   // Reverse to get chronological order (oldest first)
   return recentMessages.reverse()
+}
+
+export async function moveChatToProject(chatId: number, projectId: number | null) {
+  return await db.update(chats).set({ projectId }).where(eq(chats.id, chatId)).returning()
+}
+
+export async function archiveChat(id: number) {
+  return await db.update(chats).set({ archived: true }).where(eq(chats.id, id)).returning()
+}
+
+export async function restoreChat(id: number) {
+  return await db.update(chats).set({ archived: false }).where(eq(chats.id, id)).returning()
+}
+
+export async function getArchivedChats() {
+  return await db.select().from(chats).where(eq(chats.archived, true)).orderBy(desc(chats.createdAt)).all()
 }

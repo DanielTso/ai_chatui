@@ -11,6 +11,7 @@ export const chats = sqliteTable('chats', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   projectId: integer('project_id').references(() => projects.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
+  archived: integer('archived', { mode: 'boolean' }).default(false),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
 }, (table) => ({
   projectIdIdx: index('idx_chats_project_id').on(table.projectId),
