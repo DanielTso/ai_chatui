@@ -7,7 +7,7 @@ import { DefaultChatTransport } from "ai"
 import { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import TextareaAutosize from "react-textarea-autosize"
 import { toast } from "sonner"
-import { getProjects, createProject, getChats, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getMessageCount, getChatWithContext, updateChatSystemPrompt } from "./actions"
+import { getProjects, createProject, getChats, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateProjectName, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getMessageCount, getChatWithContext, updateChatSystemPrompt } from "./actions"
 import { Sidebar } from "@/components/chat/Sidebar"
 import { ChatHeader } from "@/components/chat/ChatHeader"
 import { MessagesList } from "@/components/chat/MessagesList"
@@ -392,6 +392,17 @@ export default function Home() {
     toast.success("Project deleted")
   }, [projects, activeProjectId])
 
+  const handleRenameProject = useCallback(async (id: number, name: string) => {
+    try {
+      await updateProjectName(id, name)
+      setProjects(projects.map(p => p.id === id ? { ...p, name } : p))
+      toast.success("Project renamed")
+    } catch (e) {
+      console.error(e)
+      setError("Failed to rename project.")
+    }
+  }, [projects])
+
   const handleRequestDelete = useCallback((id: number) => {
     setDeleteTargetId(id)
     setDeleteDialogOpen(true)
@@ -506,6 +517,7 @@ export default function Home() {
         onSelectProject={handleSelectProject}
         onSelectChat={setActiveChatId}
         onSelectStandaloneChat={handleSelectStandaloneChat}
+        onRenameProject={handleRenameProject}
         onDeleteProject={handleDeleteProject}
         onMoveChat={handleMoveChat}
         onRenameChat={handleRequestRename}

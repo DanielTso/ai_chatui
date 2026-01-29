@@ -16,6 +16,10 @@ export async function deleteProject(id: number) {
   return await db.delete(projects).where(eq(projects.id, id))
 }
 
+export async function updateProjectName(id: number, name: string) {
+  return await db.update(projects).set({ name }).where(eq(projects.id, id)).returning()
+}
+
 export async function getChats(projectId: number) {
   return await db.select().from(chats).where(
     and(eq(chats.projectId, projectId), eq(chats.archived, false))

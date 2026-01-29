@@ -1,5 +1,5 @@
-import { memo } from "react"
-import { Folder, Plus, Settings, Sun, Moon, MessageSquare, ChevronDown, MessageCircle, Archive } from "lucide-react"
+import { memo, useState, useRef, useEffect, useMemo } from "react"
+import { Folder, Plus, Settings, Sun, Moon, MessageSquare, ChevronDown, MessageCircle, Archive, Pencil, Check, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ChatContextMenu } from "./ChatContextMenu"
 import { useCollapseState } from "@/hooks/useCollapseState"
@@ -30,6 +30,7 @@ interface SidebarProps {
   onSelectProject: (id: number) => void
   onSelectChat: (id: number) => void
   onSelectStandaloneChat: (id: number) => void
+  onRenameProject: (id: number, name: string) => void
   onDeleteProject: (id: number) => void
   onMoveChat: (chatId: number, projectId: number | null) => void
   onRenameChat: (chatId: number) => void
@@ -52,6 +53,7 @@ export const Sidebar = memo(function Sidebar({
   onSelectProject,
   onSelectChat,
   onSelectStandaloneChat,
+  onRenameProject,
   onDeleteProject,
   onMoveChat,
   onRenameChat,
@@ -59,6 +61,50 @@ export const Sidebar = memo(function Sidebar({
   onRestoreChat,
   onDeleteChat,
 }: SidebarProps) {
+  // State for inline project editing
+  const [editingProjectId, setEditingProjectId] = useState<number | null>(null)
+  const [editedProjectName, setEditedProjectName] = useState("")
+  const projectInputRef = useRef<HTMLInputElement>(null)
+
+  // Sort projects alphabetically
+  const sortedProjects = useMemo(() =>
+    [...projects].sort((a, b) => a.name.localeCompare(b.name)),
+    [projects]
+  )
+
+  // Focus input when editing starts
+  useEffect(() => {
+    if (editingProjectId && projectInputRef.current) {
+      projectInputRef.current.focus()
+      projectInputRef.current.select()
+    }
+  }, [editingProjectId])
+
+  const startEditingProject = (project: Project) => {
+    setEditingProjectId(project.id)
+    setEditedProjectName(project.name)
+  }
+
+  const saveProjectName = () => {
+    if (editingProjectId && editedProjectName.trim()) {
+      onRenameProject(editingProjectId, editedProjectName.trim())
+    }
+    setEditingProjectId(null)
+  }
+
+  const cancelEditingProject = () => {
+    setEditingProjectId(null)
+    setEditedProjectName("")
+  }
+
+  const handleProjectKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      saveProjectName()
+    } else if (e.key === 'Escape') {
+      cancelEditingProject()
+    }
+  }
+
   const {
     quickChatsCollapsed,
     projectsCollapsed,
@@ -172,9 +218,10 @@ export const Sidebar = memo(function Sidebar({
                 <Plus className="h-3.5 w-3.5" /> New Project
               </button>
 
-              {projects.map((p) => {
+              {sortedProjects.map((p) => {
                 const projectChats = chats.filter(c => c.projectId === p.id)
                 const collapsed = isProjectCollapsed(p.id)
+                const isEditing = editingProjectId === p.id
 
                 return (
                   <div key={p.id} className="space-y-1">
@@ -184,38 +231,81 @@ export const Sidebar = memo(function Sidebar({
                         activeProjectId === p.id ? "bg-white/10 text-foreground" : "text-muted-foreground hover:bg-white/5"
                       )}
                     >
-                      <div
-                        className="flex items-center gap-2 flex-1"
-                        onClick={() => onSelectProject(p.id)}
-                      >
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            toggleProjectChats(p.id)
-                          }}
-                          className="hover:bg-white/10 rounded p-0.5 transition-colors"
-                        >
-                          <ChevronDown className={cn("h-3 w-3 transition-transform", collapsed && "-rotate-90")} />
-                        </button>
-                        <Folder className="h-4 w-4" />
-                        <span className="text-sm font-medium truncate max-w-[100px]">{p.name}</span>
-                        {projectChats.length > 0 && (
-                          <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded-full">
-                            {projectChats.length}
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onDeleteProject(p.id)
-                        }}
-                        className="opacity-0 group-hover:opacity-100 hover:text-red-400 p-1"
-                      >
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
+                      {isEditing ? (
+                        <div className="flex items-center gap-2 flex-1" onClick={(e) => e.stopPropagation()}>
+                          <Folder className="h-4 w-4 shrink-0" />
+                          <input
+                            ref={projectInputRef}
+                            type="text"
+                            value={editedProjectName}
+                            onChange={(e) => setEditedProjectName(e.target.value)}
+                            onKeyDown={handleProjectKeyDown}
+                            onBlur={saveProjectName}
+                            className="flex-1 bg-white/10 border border-primary/50 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary min-w-0"
+                            maxLength={30}
+                          />
+                          <button
+                            onClick={saveProjectName}
+                            className="p-0.5 hover:bg-white/10 rounded transition-colors"
+                          >
+                            <Check className="h-3 w-3 text-green-400" />
+                          </button>
+                          <button
+                            onClick={cancelEditingProject}
+                            className="p-0.5 hover:bg-white/10 rounded transition-colors"
+                          >
+                            <X className="h-3 w-3 text-red-400" />
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <div
+                            className="flex items-center gap-2 flex-1 min-w-0"
+                            onClick={() => onSelectProject(p.id)}
+                          >
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                toggleProjectChats(p.id)
+                              }}
+                              className="hover:bg-white/10 rounded p-0.5 transition-colors"
+                            >
+                              <ChevronDown className={cn("h-3 w-3 transition-transform", collapsed && "-rotate-90")} />
+                            </button>
+                            <Folder className="h-4 w-4 shrink-0" />
+                            <span className="text-sm font-medium truncate">{p.name}</span>
+                            {projectChats.length > 0 && (
+                              <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded-full shrink-0">
+                                {projectChats.length}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                startEditingProject(p)
+                              }}
+                              className="p-1 hover:text-primary"
+                              title="Rename project"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                onDeleteProject(p.id)
+                              }}
+                              className="p-1 hover:text-red-400"
+                              title="Delete project"
+                            >
+                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
 
                     {!collapsed && (
