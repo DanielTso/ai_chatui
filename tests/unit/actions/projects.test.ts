@@ -15,8 +15,8 @@ import {
 } from '@/app/actions'
 
 describe('project actions', () => {
-  beforeEach(() => {
-    createTestDb()
+  beforeEach(async () => {
+    await createTestDb()
   })
 
   it('creates a project and returns it', async () => {

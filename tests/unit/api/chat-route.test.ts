@@ -38,8 +38,8 @@ vi.mock('ai-sdk-ollama', () => ({
 import { createProject, createChat, updateChatSystemPrompt, updateChatSummary } from '@/app/actions'
 
 describe('POST /api/chat', () => {
-  beforeEach(() => {
-    createTestDb()
+  beforeEach(async () => {
+    await createTestDb()
     vi.clearAllMocks()
     // Set API key so google provider is created
     process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'test-key'

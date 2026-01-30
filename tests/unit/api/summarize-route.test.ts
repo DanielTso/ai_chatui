@@ -58,8 +58,8 @@ async function importRoute() {
 }
 
 describe('POST /api/summarize', () => {
-  beforeEach(() => {
-    createTestDb()
+  beforeEach(async () => {
+    await createTestDb()
     vi.clearAllMocks()
   })
 

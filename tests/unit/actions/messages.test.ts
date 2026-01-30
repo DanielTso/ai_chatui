@@ -19,7 +19,7 @@ describe('message actions', () => {
   let chatId: number
 
   beforeEach(async () => {
-    createTestDb()
+    await createTestDb()
     const [project] = await createProject('P')
     const [chat] = await createChat(project.id, 'Chat')
     chatId = chat.id

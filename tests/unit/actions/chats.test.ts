@@ -23,8 +23,8 @@ import {
 } from '@/app/actions'
 
 describe('chat actions', () => {
-  beforeEach(() => {
-    createTestDb()
+  beforeEach(async () => {
+    await createTestDb()
   })
 
   it('creates a chat in a project', async () => {

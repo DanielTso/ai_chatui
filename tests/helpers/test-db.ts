@@ -1,5 +1,5 @@
-import Database from 'better-sqlite3'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
+import { createClient } from '@libsql/client'
+import { drizzle } from 'drizzle-orm/libsql'
 import * as schema from '@/db/schema'
 
 const DDL = `
@@ -84,9 +84,9 @@ PRAGMA foreign_keys = ON;
 
 export let testDb: ReturnType<typeof drizzle<typeof schema>>
 
-export function createTestDb() {
-  const sqlite = new Database(':memory:')
-  sqlite.exec(DDL)
-  testDb = drizzle(sqlite, { schema })
+export async function createTestDb() {
+  const client = createClient({ url: ':memory:' })
+  await client.executeMultiple(DDL)
+  testDb = drizzle(client, { schema })
   return testDb
 }
