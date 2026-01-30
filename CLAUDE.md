@@ -26,6 +26,8 @@ Create `.env.local` with:
 GOOGLE_GENERATIVE_AI_API_KEY=your_key_here
 ```
 
+API keys and Ollama URL can also be configured at runtime via the **Settings dialog** (stored in the `settings` SQLite table). DB values take priority over `.env.local`.
+
 For local models, run Ollama: `ollama serve` (default port 11434). Both providers are optional — the app works with either or both.
 
 ## Architecture Overview
@@ -35,7 +37,7 @@ Next.js 16 App Router chat application with hybrid AI backend (Google Gemini clo
 ### Data Flow
 
 1. **Client** (`src/app/page.tsx`) — Single-page chat UI using `useChat` from `@ai-sdk/react`. All application state lives here (projects, chats, messages, model selection).
-2. **Server Actions** (`src/app/actions.ts`) — "use server" functions for all DB reads/writes (CRUD for projects, chats, messages).
+2. **Server Actions** (`src/app/actions.ts`) — "use server" functions for all DB reads/writes (CRUD for projects, chats, messages, settings).
 3. **API Routes**:
    - `POST /api/chat` — Streams LLM responses. Routes to Gemini or Ollama based on model name prefix (`gemini` → Google, else → Ollama). Applies context compression (summary + last 20 messages) when summary exists.
    - `GET /api/models` — Lists available models from both providers. Caches for 5 minutes.
@@ -43,22 +45,24 @@ Next.js 16 App Router chat application with hybrid AI backend (Google Gemini clo
 
 ### Component Structure
 
-- `src/components/chat/` — Chat-specific components: `Sidebar` (project/chat navigation, 415 lines), `MessagesList` (markdown rendering with Framer Motion animations), `ChatHeader`, `ChatContextMenu`, `MessageActions`, `CodeBlock`
-- `src/components/ui/` — Reusable UI: `CommandPalette` (Cmd+K), `PersonaSelector` (6 built-in presets), `ModelSelect`, `SystemPromptDialog`, `RenameDialog`, `DeleteConfirmDialog`, `Toaster` (sonner)
-- `src/hooks/` — `useLocalStorage<T>` (generic localStorage with SSR safety), `usePersonas` (persona management), `useCollapseState` (sidebar state)
-- `src/lib/` — `utils.ts` (`cn()` via clsx + tailwind-merge), `formatTime.ts` (relative timestamps)
+- `src/components/chat/` — Chat-specific components: `Sidebar` (project/chat navigation, collapsible with icon-only mode), `MessagesList` (markdown rendering with Framer Motion animations), `ChatHeader`, `ChatContextMenu`, `MessageActions`, `CodeBlock`
+- `src/components/ui/` — Reusable UI: `CommandPalette` (Cmd+K), `PersonaSelector` (6 built-in presets), `ModelSelect`, `SettingsDialog` (tabbed settings with API, Appearance, Model Defaults), `SystemPromptDialog`, `RenameDialog`, `DeleteConfirmDialog`, `Toaster` (sonner)
+- `src/components/settings/` — Settings tab components: `ApiSettingsTab` (Gemini key, Ollama URL + test), `AppearanceSettingsTab` (theme, font size, density), `ModelDefaultsSettingsTab` (default model, system prompt, persona management)
+- `src/hooks/` — `useLocalStorage<T>` (generic localStorage with SSR safety, deferred hydration to avoid mismatch), `usePersonas` (persona management), `useCollapseState` (sidebar section state), `useAppearanceSettings` (font size + message density)
+- `src/lib/` — `utils.ts` (`cn()` via clsx + tailwind-merge), `formatTime.ts` (relative timestamps), `settings.ts` (server-side DB-first/env-fallback settings helper)
 
 ### Database
 
 SQLite with Drizzle ORM. Schema at `src/db/schema.ts`, connection at `src/db/index.ts`.
 
-Three tables: `projects` → `chats` → `messages` (cascade deletes). Key chat fields: `archived` (soft delete), `systemPrompt`, `summary`, `summaryUpToMessageId`.
+Four tables: `projects` → `chats` → `messages` (cascade deletes), plus `settings` (key-value store). Key chat fields: `archived` (soft delete), `systemPrompt`, `summary`, `summaryUpToMessageId`. Settings table: `key` (text PK), `value` (text), `updatedAt` (timestamp).
 
 ### State Management
 
-- **Server state**: SQLite via server actions
-- **UI persistence**: `useLocalStorage` hook (sidebar collapse, custom personas)
-- **Theme**: `next-themes` with class-based dark/light switching
+- **Server state**: SQLite via server actions (projects, chats, messages, settings)
+- **Server-accessible settings**: API keys, Ollama URL, default model/prompt stored in `settings` table via `src/lib/settings.ts` (DB-first, env-fallback)
+- **UI persistence**: `useLocalStorage` hook (sidebar collapse, custom personas, font size, message density). Uses deferred hydration — initializes with default value, reads localStorage in `useEffect` to avoid SSR hydration mismatch
+- **Theme**: `next-themes` with class-based dark/light/system switching (configurable in Settings dialog)
 - **Refs for closures**: Dynamic values (selectedModel, activeChatId) use `useRef` to avoid stale closures in `useChat` transport
 
 ### Styling
@@ -72,6 +76,33 @@ Tailwind CSS v4 with a glassmorphism design system. Key patterns:
 ### Context Summarization
 
 Auto-summarization triggers at 30+ messages. The summarizer compresses older messages into an LLM-generated summary and keeps the last 10 messages in full. When a summary exists, `/api/chat` sends: system prompt + summary (as synthetic messages) + last 20 recent messages. System prompts are never trimmed.
+
+## Settings System
+
+### Storage Strategy
+- **Server-accessible settings** (API keys, URLs, defaults) → SQLite `settings` key-value table
+- **Client-only preferences** (theme, font size, density, sidebar collapse) → `localStorage`
+
+### Server Helper (`src/lib/settings.ts`)
+```typescript
+// DB-first, env-fallback pattern
+getGeminiApiKey()    // DB 'gemini-api-key' → env GOOGLE_GENERATIVE_AI_API_KEY
+getOllamaBaseUrl()   // DB 'ollama-base-url' → default 'http://localhost:11434'
+getDefaultModel()    // DB 'default-model'
+getDefaultSystemPrompt() // DB 'default-system-prompt'
+```
+
+### API Route Provider Creation
+All API routes (`chat`, `models`, `summarize`) create providers **per-request** using the settings helper rather than module-level singletons. This allows runtime configuration changes without server restart.
+
+### Settings Dialog
+Three tabs accessed via sidebar Settings button:
+- **API & Providers**: Gemini API key (password field), Ollama URL with "Test Connection" button
+- **Appearance**: Theme (Light/Dark/System cards), font size (Small/Medium/Large), message density (Compact/Comfortable/Spacious)
+- **Model Defaults**: Default model selector, default system prompt, persona management (view built-in, add/delete custom)
+
+### Collapsible Sidebar
+The sidebar supports collapsed/expanded states via `useLocalStorage('sidebar-collapsed', false)`. When collapsed, it renders as a narrow icon-only strip with tooltips. Toggle via `PanelLeftClose`/`PanelLeftOpen` buttons.
 
 ## AI SDK v6 Implementation Details
 
@@ -150,7 +181,7 @@ vi.mock('@/db', () => ({
 beforeEach(() => { createTestDb() }) // Fresh DB per test
 ```
 
-**API route tests** that import modules with `process.env`-guarded providers at module level require `vi.resetModules()` + `vi.doMock()` + dynamic `import()` to ensure env vars are set before module evaluation.
+**API route tests** require `vi.resetModules()` + `vi.doMock()` + dynamic `import()` to re-register mocks after module reset. Must mock `@/lib/settings` alongside AI SDK providers and `@/db`.
 
 ### Playwright (E2E)
 
