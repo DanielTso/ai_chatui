@@ -220,7 +220,7 @@ export const MessagesList = memo(function MessagesList({
                     return files ? <MessageFileChips files={files} /> : null
                   })()}
                   <div className={cn(
-                    "prose dark:prose-invert text-base max-w-none break-words overflow-hidden",
+                    "prose prose-sm dark:prose-invert max-w-none break-words overflow-hidden",
                     isStreamingMessage && "streaming-cursor"
                   )}>
                     <SmoothStreamingWrapper isStreaming={isStreamingMessage}>
