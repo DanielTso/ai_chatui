@@ -1,4 +1,4 @@
-# Glassmorphic Local AI Chat
+# Atelier AI
 
 A beautiful, local-first AI chat interface built with Next.js, Tailwind CSS, and Ollama, now featuring hybrid support for Google Gemini models.
 

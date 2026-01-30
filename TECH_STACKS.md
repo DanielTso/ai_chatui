@@ -1,6 +1,6 @@
 # Implemented Tech Stack
 
-This document outlines the final technology choices used in the "Glassmorphic Local AI Chat" application.
+This document outlines the final technology choices used in the "Atelier AI" application.
 
 ## Core Framework
 *   **Next.js 16 (App Router):** Chosen for its robust server-side rendering, API route capabilities, and seamless integration with Vercel AI SDK.

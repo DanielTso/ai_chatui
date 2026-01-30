@@ -1,4 +1,4 @@
-# Project Plan: Glassmorphic Local AI Chat
+# Project Plan: Atelier AI
 
 ## Tech Stack
 - **Framework:** Next.js 14+ (App Router)
