@@ -117,8 +117,6 @@ export default function Home() {
 
     if (!cutoffMessageId) return
 
-    console.log(`[Summarization] Triggering for chat ${chatId}, cutoff at message ${cutoffMessageId}`)
-
     try {
       const response = await fetch('/api/summarize', {
         method: 'POST',
@@ -132,7 +130,6 @@ export default function Home() {
 
       if (response.ok) {
         const result = await response.json()
-        console.log(`[Summarization] Complete: ${result.summarizedMessageCount} messages summarized`)
         toast.success('Conversation summarized for better context management')
       }
     } catch (error) {
@@ -149,7 +146,6 @@ export default function Home() {
   } = useChat({
     transport,
     onFinish: async ({ message }) => {
-      console.log('[onFinish] Message received:', message)
       const currentChatId = activeChatIdRef.current
       const currentProjectId = activeProjectIdRef.current
 
@@ -161,7 +157,6 @@ export default function Home() {
 
       if (currentChatId && textContent.trim()) {
         const result = await saveMessage(currentChatId, 'assistant', textContent)
-        console.log('[onFinish] Assistant message saved to DB')
 
         // Async embed the assistant message (best-effort)
         if (result?.[0]?.id) {
@@ -252,14 +247,6 @@ export default function Home() {
   const suggestedPersona = smartSuggestion.suggestedPersonaId
     ? getPersonaById(smartSuggestion.suggestedPersonaId)
     : null
-
-  // Debug: log messages changes
-  useEffect(() => {
-    console.log('[useChat] status:', status)
-    console.log('[useChat] Messages count:', messages.length)
-    console.log('[useChat] Messages:', messages)
-    console.log('[useChat] input value:', input)
-  }, [status, messages, input])
 
   // Sync chat errors to UI
   useEffect(() => {
@@ -465,12 +452,6 @@ export default function Home() {
   const handleSendMessage = async () => {
     if ((!input.trim() && attachedFiles.length === 0) || !activeChatId || isLoading) return
 
-    console.log('[Form] Submit triggered')
-    console.log('[Form] input value:', input)
-    console.log('[Form] activeChatId:', activeChatId)
-    console.log('[Form] selectedModel:', selectedModel)
-    console.log('[Form] status:', status)
-
     const userMessage = attachedFiles.length > 0
       ? buildFileMessage(input.trim(), attachedFiles)
       : input.trim()
@@ -512,7 +493,6 @@ export default function Home() {
       // Save user message to database and trigger embedding
       saveMessage(activeChatId, 'user', textContent)
         .then((result) => {
-          console.log('[useEffect] User message saved to DB')
           // Async embed the user message (best-effort)
           if (result?.[0]?.id) {
             fetch('/api/embed', {
