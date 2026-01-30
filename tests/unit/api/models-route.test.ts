@@ -11,10 +11,11 @@ describe('GET /api/models', () => {
     globalThis.fetch = originalFetch
   })
 
-  function mockSettings(apiKey: string | null = 'test-key', ollamaUrl: string = 'http://localhost:11434') {
+  function mockSettings(apiKey: string | null = 'test-key', ollamaUrl: string = 'http://localhost:11434', dashScopeApiKey: string | null = null) {
     vi.doMock('@/lib/settings', () => ({
       getGeminiApiKey: () => Promise.resolve(apiKey),
       getOllamaBaseUrl: () => Promise.resolve(ollamaUrl),
+      getDashScopeApiKey: () => Promise.resolve(dashScopeApiKey),
     }))
   }
 

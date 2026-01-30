@@ -86,8 +86,9 @@ export const ModelDefaultsSettingsTab = memo(function ModelDefaultsSettingsTab({
     )
   }
 
-  const cloudModels = models.filter(m => m.model.startsWith('gemini'))
-  const localModels = models.filter(m => !m.model.startsWith('gemini'))
+  const isCloudModel = (m: Model) => m.model.startsWith('gemini') || m.model.startsWith('qwen')
+  const cloudModels = models.filter(isCloudModel)
+  const localModels = models.filter(m => !isCloudModel(m))
 
   return (
     <div className="space-y-6">

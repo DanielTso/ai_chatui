@@ -59,16 +59,20 @@ describe('POST /api/chat', () => {
     }))
     vi.doMock('@ai-sdk/google', () => ({
       createGoogleGenerativeAI: () => Object.assign(
-        (...args: unknown[]) => mockGoogleFn(...args),
+        (model: string) => mockGoogleFn(model),
         { tools: { googleSearch: mockGoogleSearch } }
       ),
     }))
     vi.doMock('ai-sdk-ollama', () => ({
       createOllama: () => mockOllamaFn,
     }))
+    vi.doMock('@ai-sdk/openai', () => ({
+      createOpenAI: () => vi.fn((model: string) => ({ modelId: model, provider: 'openai' })),
+    }))
     vi.doMock('@/lib/settings', () => ({
       getGeminiApiKey: () => Promise.resolve('test-key'),
       getOllamaBaseUrl: () => Promise.resolve('http://localhost:11434'),
+      getDashScopeApiKey: () => Promise.resolve(null),
     }))
     vi.doMock('@/lib/embeddings', () => ({
       generateEmbedding: () => Promise.reject(new Error('test: embeddings unavailable')),

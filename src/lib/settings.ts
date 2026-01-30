@@ -28,3 +28,7 @@ export async function getDefaultModel(): Promise<string | null> {
 export async function getDefaultSystemPrompt(): Promise<string | null> {
   return getServerSetting('default-system-prompt')
 }
+
+export async function getDashScopeApiKey(): Promise<string | null> {
+  return getServerSetting('dashscope-api-key', 'DASHSCOPE_API_KEY')
+}

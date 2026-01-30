@@ -1,8 +1,9 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createOpenAI } from '@ai-sdk/openai';
 import { createOllama } from 'ai-sdk-ollama';
 import { generateText } from 'ai';
 import { getMessagesForSummarization, updateChatSummary, getChatWithSummary } from '@/app/actions';
-import { getGeminiApiKey, getOllamaBaseUrl } from '@/lib/settings';
+import { getGeminiApiKey, getOllamaBaseUrl, getDashScopeApiKey } from '@/lib/settings';
 
 const SUMMARIZATION_PROMPT = `You are a conversation summarizer. Your task is to create a concise summary of the conversation that preserves:
 - Key topics discussed
@@ -57,6 +58,7 @@ export async function POST(req: Request) {
     // Select model for summarization
     const modelName = model || 'gemini-2.0-flash';
     const isGeminiModel = modelName.startsWith('gemini');
+    const isQwenModel = modelName.startsWith('qwen');
 
     let selectedModel;
     if (isGeminiModel) {
@@ -66,6 +68,16 @@ export async function POST(req: Request) {
       }
       const google = createGoogleGenerativeAI({ apiKey });
       selectedModel = google(modelName);
+    } else if (isQwenModel) {
+      const apiKey = await getDashScopeApiKey();
+      if (!apiKey) {
+        throw new Error("DashScope API Key is missing. Set it in Settings or .env.local.");
+      }
+      const dashscope = createOpenAI({
+        baseURL: 'https://dashscope-us.aliyuncs.com/compatible-mode/v1',
+        apiKey,
+      });
+      selectedModel = dashscope.chat(modelName);
     } else {
       const baseURL = await getOllamaBaseUrl();
       const ollama = createOllama({ baseURL });

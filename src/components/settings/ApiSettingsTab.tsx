@@ -10,8 +10,10 @@ export const ApiSettingsTab = memo(function ApiSettingsTab({
   onSettingsChanged?: () => void
 }) {
   const [geminiKey, setGeminiKey] = useState('')
+  const [dashScopeKey, setDashScopeKey] = useState('')
   const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434')
   const [showKey, setShowKey] = useState(false)
+  const [showDashScopeKey, setShowDashScopeKey] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null)
   const [saving, setSaving] = useState(false)
@@ -19,11 +21,13 @@ export const ApiSettingsTab = memo(function ApiSettingsTab({
 
   useEffect(() => {
     async function load() {
-      const [key, url] = await Promise.all([
+      const [key, dsKey, url] = await Promise.all([
         getSetting('gemini-api-key'),
+        getSetting('dashscope-api-key'),
         getSetting('ollama-base-url'),
       ])
       if (key) setGeminiKey(key)
+      if (dsKey) setDashScopeKey(dsKey)
       if (url) setOllamaUrl(url)
       setLoaded(true)
     }
@@ -50,6 +54,7 @@ export const ApiSettingsTab = memo(function ApiSettingsTab({
     try {
       const entries: { key: string; value: string }[] = []
       if (geminiKey) entries.push({ key: 'gemini-api-key', value: geminiKey })
+      if (dashScopeKey) entries.push({ key: 'dashscope-api-key', value: dashScopeKey })
       entries.push({ key: 'ollama-base-url', value: ollamaUrl })
       await setSettings(entries)
       onSettingsChanged?.()
@@ -88,6 +93,30 @@ export const ApiSettingsTab = memo(function ApiSettingsTab({
             className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-white/10 transition-colors text-muted-foreground"
           >
             {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
+      </div>
+
+      {/* DashScope API Key */}
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Alibaba Cloud DashScope API Key</label>
+        <p className="text-xs text-muted-foreground">
+          Required for Qwen models. Get a key from Alibaba Cloud Model Studio.
+        </p>
+        <div className="relative">
+          <input
+            type={showDashScopeKey ? 'text' : 'password'}
+            value={dashScopeKey}
+            onChange={(e) => setDashScopeKey(e.target.value)}
+            placeholder="sk-..."
+            className="w-full px-3 py-2 pr-10 bg-black/20 border border-white/10 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all"
+          />
+          <button
+            type="button"
+            onClick={() => setShowDashScopeKey(!showDashScopeKey)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-white/10 transition-colors text-muted-foreground"
+          >
+            {showDashScopeKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>
         </div>
       </div>

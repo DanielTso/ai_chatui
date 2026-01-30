@@ -1,8 +1,9 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createOpenAI } from '@ai-sdk/openai';
 import { createOllama } from 'ai-sdk-ollama';
 import { streamText, convertToModelMessages, type UIMessage } from 'ai';
 import { getChatWithContext } from '@/app/actions';
-import { getGeminiApiKey, getOllamaBaseUrl } from '@/lib/settings';
+import { getGeminiApiKey, getOllamaBaseUrl, getDashScopeApiKey } from '@/lib/settings';
 import { generateEmbedding, findSimilarMessages } from '@/lib/embeddings';
 
 // Configuration for hybrid context management
@@ -18,6 +19,7 @@ export async function POST(req: Request) {
 
     // Determine which provider to use based on model name
     const isGeminiModel = modelName.startsWith('gemini');
+    const isQwenModel = modelName.startsWith('qwen');
 
     let selectedModel;
     let googleTools: Record<string, ReturnType<ReturnType<typeof createGoogleGenerativeAI>['tools']['googleSearch']>> | undefined;
@@ -33,6 +35,16 @@ export async function POST(req: Request) {
         google_search: google.tools.googleSearch({}),
       };
       console.log('[API] Google Search grounding enabled');
+    } else if (isQwenModel) {
+      const apiKey = await getDashScopeApiKey();
+      if (!apiKey) {
+        throw new Error("DashScope API Key is missing. Set it in Settings or .env.local.");
+      }
+      const dashscope = createOpenAI({
+        baseURL: 'https://dashscope-us.aliyuncs.com/compatible-mode/v1',
+        apiKey,
+      });
+      selectedModel = dashscope.chat(modelName);
     } else {
       const baseURL = await getOllamaBaseUrl();
       const ollama = createOllama({ baseURL });

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getGeminiApiKey, getOllamaBaseUrl } from '@/lib/settings';
+import { getGeminiApiKey, getOllamaBaseUrl, getDashScopeApiKey } from '@/lib/settings';
 
 export async function GET() {
   // Only include Gemini models if an API key is configured
@@ -8,6 +8,15 @@ export async function GET() {
     { name: 'Gemini 3 Flash', model: 'gemini-3-flash-preview', digest: 'gemini-3-flash-preview' },
     { name: 'Gemini 3 Pro', model: 'gemini-3-pro-preview', digest: 'gemini-3-pro-preview' },
     { name: 'Gemini 3 Deep Think', model: 'gemini-3-deep-think', digest: 'gemini-3-deep-think' },
+  ] : [];
+
+  // Only include Qwen models if a DashScope API key is configured
+  const dashScopeApiKey = await getDashScopeApiKey();
+  const qwenModels = dashScopeApiKey ? [
+    { name: 'Qwen Flash', model: 'qwen-flash', digest: 'qwen-flash' },
+    { name: 'Qwen Plus', model: 'qwen-plus', digest: 'qwen-plus' },
+    { name: 'Qwen Max', model: 'qwen3-max', digest: 'qwen3-max' },
+    { name: 'Qwen Coder', model: 'qwen3-coder-plus', digest: 'qwen3-coder-plus' },
   ] : [];
 
   // Try to fetch local Ollama models using configured URL
@@ -22,12 +31,12 @@ export async function GET() {
       ollamaModels = data.models || [];
     }
   } catch {
-    // Ollama not available, continue with Gemini only
-    console.log('[Models API] Ollama not available, using Gemini models only');
+    // Ollama not available, continue with other providers
+    console.log('[Models API] Ollama not available, using cloud models only');
   }
 
-  // Combine both model types
-  const allModels = [...geminiModels, ...ollamaModels];
+  // Combine all model types
+  const allModels = [...geminiModels, ...qwenModels, ...ollamaModels];
 
   return NextResponse.json({ models: allModels }, {
     headers: {

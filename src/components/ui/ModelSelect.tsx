@@ -17,8 +17,9 @@ interface ModelSelectProps {
 }
 
 export function ModelSelect({ models, value, onChange }: ModelSelectProps) {
-  const cloudModels = models.filter(m => m.model.startsWith('gemini'))
-  const localModels = models.filter(m => !m.model.startsWith('gemini'))
+  const isCloudModel = (m: Model) => m.model.startsWith('gemini') || m.model.startsWith('qwen')
+  const cloudModels = models.filter(isCloudModel)
+  const localModels = models.filter(m => !isCloudModel(m))
 
   const selectedModel = models.find(m => m.model === value)
 
