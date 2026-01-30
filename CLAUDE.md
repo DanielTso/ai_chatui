@@ -10,7 +10,7 @@ npm run dev          # Start development server (http://localhost:3000)
 npm run build        # Production build
 npm run start        # Run production server
 npm run lint         # Run ESLint
-npx drizzle-kit push # Push schema changes to SQLite database
+npx drizzle-kit push # Push schema changes to database (local SQLite or remote Turso)
 npm test             # Run Vitest unit/integration tests
 npm run test:watch   # Run Vitest in watch mode
 npm run test:e2e     # Run Playwright E2E tests (starts dev server automatically)
@@ -30,9 +30,25 @@ API keys and Ollama URL can also be configured at runtime via the **Settings dia
 
 For local models, run Ollama: `ollama serve` (default port 11434). Both providers are optional — the app works with either or both.
 
+### Database (Local vs Vercel/Turso)
+
+The app uses `@libsql/client` + `drizzle-orm/libsql`, which supports both local SQLite files and remote Turso databases. The driver is selected automatically based on environment variables:
+
+- **Local dev** (default): No env vars needed — uses `file:sqlite.db` automatically.
+- **Vercel/Production**: Set these env vars (in Vercel dashboard):
+  ```
+  TURSO_DATABASE_URL=libsql://your-db-name.turso.io
+  TURSO_AUTH_TOKEN=your-auth-token
+  ```
+
+To push schema to Turso:
+```bash
+TURSO_DATABASE_URL=libsql://... TURSO_AUTH_TOKEN=... npx drizzle-kit push
+```
+
 ## Architecture Overview
 
-Next.js 16 App Router chat application with hybrid AI backend (Google Gemini cloud + Ollama local models). Local-first design — all data stored in SQLite (`sqlite.db`).
+Next.js 16 App Router chat application with hybrid AI backend (Google Gemini cloud + Ollama local models). Uses `@libsql/client` for database access — local SQLite (`file:sqlite.db`) in development, remote Turso database on Vercel.
 
 ### Data Flow
 
@@ -56,7 +72,7 @@ Next.js 16 App Router chat application with hybrid AI backend (Google Gemini clo
 
 ### Database
 
-SQLite with Drizzle ORM. Schema at `src/db/schema.ts`, connection at `src/db/index.ts`.
+SQLite via libSQL (`@libsql/client`) with Drizzle ORM (`drizzle-orm/libsql`). Schema at `src/db/schema.ts`, connection at `src/db/index.ts`. Uses `file:sqlite.db` locally, `TURSO_DATABASE_URL` on Vercel. Drizzle config (`drizzle.config.ts`) uses `dialect: "turso"`.
 
 Seven tables: `projects` → `chats` → `messages` (cascade deletes), `settings` (key-value store), `messageEmbeddings` (vector storage for semantic memory), `personaUsage` (persona/model tracking), `chatTopics` (detected conversation topics). Key chat fields: `archived` (soft delete), `systemPrompt`, `summary`, `summaryUpToMessageId`. Key project fields: `defaultPersonaId`, `defaultModel`. Settings table: `key` (text PK), `value` (text), `updatedAt` (timestamp).
 
@@ -193,7 +209,7 @@ const text = message.parts
 2. **Message format mismatch**: Use `convertToModelMessages()` on the server
 3. **Response format**: Use `toUIMessageStreamResponse({ sendSources: true })` to include Google Search source URLs in the stream
 4. **Ollama provider**: Use `baseURL` (not `baseUrl`) in `createOllama()`
-5. **better-sqlite3**: Must be listed in `serverExternalPackages` in `next.config.ts`
+5. **libSQL client**: Uses `@libsql/client` (not `better-sqlite3`) — bundles natively in serverless, no `serverExternalPackages` needed
 6. **Google Search tool name**: Must be exactly `google_search` in the `tools` object — this is a provider requirement
 7. **AI SDK v6 naming**: Use `maxOutputTokens` (not `maxTokens`) in `generateText()`/`streamText()` options
 8. **Source parts**: Google Search grounding sends `source-url` parts in `message.parts[]` alongside `text` parts. Deduplicate by URL before rendering.
@@ -218,7 +234,7 @@ vi.mock('@/db', () => ({
   get db() { return testDb },
 }))
 
-beforeEach(() => { createTestDb() }) // Fresh DB per test
+beforeEach(async () => { await createTestDb() }) // Fresh DB per test (async — uses @libsql/client)
 ```
 
 **API route tests** require `vi.resetModules()` + `vi.doMock()` + dynamic `import()` to re-register mocks after module reset. Must mock `@/lib/settings`, `@/lib/embeddings`, and AI SDK providers alongside `@/db`. The `@ai-sdk/google` mock must include `tools.googleSearch` on the provider function for the chat route's grounding support.
@@ -231,6 +247,18 @@ Config: `playwright.config.ts`. Tests in `e2e/`. Chromium only. Auto-starts dev 
 - Textarea is disabled until a chat is selected — tests must click "New Chat" first
 - Command palette opens with `Control+k` (not `Meta+k` on Linux), closes with `Control+k` toggle or backdrop click
 - The `CommandPalette` component renders a plain `div`, not a `dialog` element — locate by content (e.g., `getByPlaceholder('Type a command or search...')`)
+
+## Deployment (Vercel + Turso)
+
+Production is deployed on **Vercel** with a **Turso** database. The Vercel project has three environment variables:
+- `TURSO_DATABASE_URL` — libSQL connection URL (e.g., `libsql://your-db.turso.io`)
+- `TURSO_AUTH_TOKEN` — Turso database auth token
+- `GOOGLE_GENERATIVE_AI_API_KEY` — Gemini API key
+
+Deploy with `vercel --prod`. Schema changes must be pushed to Turso separately:
+```bash
+TURSO_DATABASE_URL=libsql://... TURSO_AUTH_TOKEN=... npx drizzle-kit push
+```
 
 ## MCP Servers
 
