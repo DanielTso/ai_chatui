@@ -1,0 +1,106 @@
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createOllama } from 'ai-sdk-ollama';
+import { generateText } from 'ai';
+import { getGeminiApiKey, getOllamaBaseUrl } from '@/lib/settings';
+import { saveChatTopics, getChatTopics } from '@/app/actions';
+
+const CLASSIFICATION_PROMPT = `Classify the following conversation into one or more topics. Return ONLY a JSON array of objects with "topic" and "confidence" (0-100) fields.
+
+Topics to choose from:
+- coding (programming, software development)
+- debugging (fixing bugs, errors, troubleshooting)
+- creative (creative writing, storytelling, poetry)
+- learning (explanations, tutorials, education)
+- brief (requests for concise answers)
+- analysis (complex reasoning, problem solving)
+- general (doesn't fit other categories)
+
+Example output:
+[{"topic": "coding", "confidence": 85}, {"topic": "debugging", "confidence": 60}]
+
+Conversation:
+`;
+
+export async function POST(req: Request) {
+  try {
+    const { chatId, messages, model } = await req.json();
+
+    if (!chatId || !messages?.length) {
+      return new Response(JSON.stringify({ error: 'Missing chatId or messages' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Check if already classified
+    const existing = await getChatTopics(chatId);
+    if (existing.length > 0) {
+      return new Response(JSON.stringify({ topics: existing, cached: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Build conversation text for classification
+    const conversationText = messages
+      .slice(0, 10) // Only use first 10 messages for efficiency
+      .map((m: { role: string; text: string }) => `${m.role}: ${m.text}`)
+      .join('\n');
+
+    // Use cheapest available model
+    const modelName = model || 'gemini-2.0-flash';
+    const isGeminiModel = modelName.startsWith('gemini');
+
+    let selectedModel;
+    if (isGeminiModel) {
+      const apiKey = await getGeminiApiKey();
+      if (!apiKey) {
+        return new Response(JSON.stringify({ error: 'No API key available' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      const google = createGoogleGenerativeAI({ apiKey });
+      selectedModel = google(modelName);
+    } else {
+      const baseURL = await getOllamaBaseUrl();
+      const ollama = createOllama({ baseURL });
+      selectedModel = ollama(modelName);
+    }
+
+    const result = await generateText({
+      model: selectedModel,
+      prompt: CLASSIFICATION_PROMPT + conversationText,
+      maxOutputTokens: 200,
+    });
+
+    // Parse the LLM's JSON response
+    let topics: { topic: string; confidence: number }[] = [];
+    try {
+      const jsonMatch = result.text.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        topics = JSON.parse(jsonMatch[0]);
+      }
+    } catch {
+      console.error('[Classify] Failed to parse LLM response:', result.text);
+    }
+
+    // Save to DB (cached for future lookups)
+    if (topics.length > 0) {
+      await saveChatTopics(chatId, topics);
+    }
+
+    return new Response(JSON.stringify({ topics, cached: false }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (error) {
+    console.error('[Classify] Error:', error);
+    return new Response(JSON.stringify({
+      error: error instanceof Error ? error.message : 'Classification failed',
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+}

@@ -1,5 +1,5 @@
 import { memo, useState, useRef, useEffect, useMemo } from "react"
-import { Folder, Plus, Settings, Sun, Moon, MessageSquare, ChevronDown, MessageCircle, Archive, Pencil, Check, X, PanelLeftClose, PanelLeftOpen } from "lucide-react"
+import { Folder, Plus, Settings, Sun, Moon, MessageSquare, ChevronDown, MessageCircle, Archive, Pencil, Check, X, PanelLeftClose, PanelLeftOpen, SlidersHorizontal } from "lucide-react"
 import * as Tooltip from "@radix-ui/react-tooltip"
 import { cn } from "@/lib/utils"
 import { ChatContextMenu } from "./ChatContextMenu"
@@ -41,6 +41,7 @@ interface SidebarProps {
   onRestoreChat: (chatId: number) => void
   onDeleteChat: (chatId: number) => void
   onOpenSettings: () => void
+  onProjectSettings?: (projectId: number) => void
 }
 
 export const Sidebar = memo(function Sidebar({
@@ -67,6 +68,7 @@ export const Sidebar = memo(function Sidebar({
   onRestoreChat,
   onDeleteChat,
   onOpenSettings,
+  onProjectSettings,
 }: SidebarProps) {
   // State for inline project editing
   const [editingProjectId, setEditingProjectId] = useState<number | null>(null)
@@ -164,8 +166,9 @@ export const Sidebar = memo(function Sidebar({
   }
 
   return (
-    <aside className="w-64 flex flex-col glass-panel rounded-2xl p-4 transition-all duration-300 shrink-0">
-      <div className="flex items-center justify-between mb-6">
+    <aside className="w-72 flex flex-col glass-panel rounded-2xl transition-all duration-300 shrink-0 overflow-hidden">
+      {/* Header with subtle gradient accent */}
+      <div className="flex items-center justify-between px-4 pt-4 pb-3 mb-2 border-b border-white/5 bg-gradient-to-b from-white/[0.03] to-transparent">
         <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
           Gemini Local
         </h1>
@@ -189,15 +192,17 @@ export const Sidebar = memo(function Sidebar({
       </div>
 
       {/* New Chat Button (Standalone) */}
-      <button
-        onClick={onCreateStandaloneChat}
-        className="flex items-center gap-2 w-full p-3 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary transition-colors font-medium mb-4"
-      >
-        <Plus className="h-4 w-4" />
-        New Chat
-      </button>
+      <div className="px-4">
+        <button
+          onClick={onCreateStandaloneChat}
+          className="flex items-center gap-2 w-full p-3 rounded-xl bg-gradient-to-r from-blue-500/15 to-purple-500/15 hover:from-blue-500/25 hover:to-purple-500/25 text-primary border border-white/5 hover:border-white/10 transition-all font-medium mb-4"
+        >
+          <Plus className="h-4 w-4" />
+          New Chat
+        </button>
+      </div>
 
-      <div className="flex-1 overflow-y-auto space-y-4">
+      <div className="flex-1 overflow-y-auto space-y-4 px-4">
         {/* Quick Chats Section */}
         <div>
           <button
@@ -205,10 +210,10 @@ export const Sidebar = memo(function Sidebar({
             className="flex items-center gap-2 w-full px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
           >
             <ChevronDown className={cn("h-3 w-3 transition-transform", quickChatsCollapsed && "-rotate-90")} />
-            <MessageCircle className="h-3 w-3" />
+            <MessageCircle className="h-3 w-3 text-blue-400/70" />
             Quick Chats
             {standaloneChats.length > 0 && (
-              <span className="ml-auto text-[10px] bg-white/10 px-1.5 py-0.5 rounded-full">
+              <span className="ml-auto text-[10px] bg-blue-500/15 text-blue-300 px-1.5 py-0.5 rounded-full">
                 {standaloneChats.length}
               </span>
             )}
@@ -247,7 +252,7 @@ export const Sidebar = memo(function Sidebar({
         </div>
 
         {/* Divider */}
-        <div className="h-px bg-white/10" />
+        <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
 
         {/* Projects Section */}
         <div>
@@ -256,10 +261,10 @@ export const Sidebar = memo(function Sidebar({
             className="flex items-center gap-2 w-full px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
           >
             <ChevronDown className={cn("h-3 w-3 transition-transform", projectsCollapsed && "-rotate-90")} />
-            <Folder className="h-3 w-3" />
+            <Folder className="h-3 w-3 text-purple-400/70" />
             Projects
             {projects.length > 0 && (
-              <span className="ml-auto text-[10px] bg-white/10 px-1.5 py-0.5 rounded-full">
+              <span className="ml-auto text-[10px] bg-purple-500/15 text-purple-300 px-1.5 py-0.5 rounded-full">
                 {projects.length}
               </span>
             )}
@@ -331,12 +336,24 @@ export const Sidebar = memo(function Sidebar({
                             <Folder className="h-4 w-4 shrink-0" />
                             <span className="text-sm font-medium truncate">{p.name}</span>
                             {projectChats.length > 0 && (
-                              <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded-full shrink-0">
+                              <span className="text-[10px] bg-purple-500/15 text-purple-300 px-1.5 py-0.5 rounded-full shrink-0">
                                 {projectChats.length}
                               </span>
                             )}
                           </div>
                           <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            {onProjectSettings && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  onProjectSettings(p.id)
+                                }}
+                                className="p-1 hover:text-blue-400"
+                                title="Project defaults"
+                              >
+                                <SlidersHorizontal className="h-3 w-3" />
+                              </button>
+                            )}
                             <button
                               onClick={(e) => {
                                 e.stopPropagation()
@@ -413,16 +430,16 @@ export const Sidebar = memo(function Sidebar({
         {/* Archived Section */}
         {archivedChats.length > 0 && (
           <>
-            <div className="h-px bg-white/10" />
+            <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
             <div>
               <button
                 onClick={toggleArchived}
                 className="flex items-center gap-2 w-full px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
               >
                 <ChevronDown className={cn("h-3 w-3 transition-transform", archivedCollapsed && "-rotate-90")} />
-                <Archive className="h-3 w-3" />
+                <Archive className="h-3 w-3 text-amber-400/70" />
                 Archived
-                <span className="ml-auto text-[10px] bg-white/10 px-1.5 py-0.5 rounded-full">
+                <span className="ml-auto text-[10px] bg-amber-500/15 text-amber-300 px-1.5 py-0.5 rounded-full">
                   {archivedChats.length}
                 </span>
               </button>
@@ -460,12 +477,12 @@ export const Sidebar = memo(function Sidebar({
         )}
       </div>
 
-      <div className="mt-4 pt-4 border-t border-white/10">
+      <div className="mx-4 mt-4 pt-4 border-t border-transparent" style={{ borderImage: 'linear-gradient(to right, transparent, rgba(255,255,255,0.1), transparent) 1' }}>
         <button
           onClick={onOpenSettings}
-          className="flex items-center gap-2 p-2 w-full rounded-lg hover:bg-white/5 text-sm text-muted-foreground transition-colors"
+          className="flex items-center gap-2 p-2.5 w-full rounded-xl hover:bg-white/5 text-sm text-muted-foreground hover:text-foreground transition-all group"
         >
-          <Settings className="h-4 w-4" />
+          <Settings className="h-4 w-4 group-hover:text-blue-400 transition-colors" />
           Settings
         </button>
       </div>

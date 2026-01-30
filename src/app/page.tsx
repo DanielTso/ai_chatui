@@ -1,24 +1,28 @@
 "use client"
 
-import { Send, Loader2, AlertCircle } from "lucide-react"
+import { AlertCircle } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
 import { useEffect, useState, useRef, useCallback, useMemo } from "react"
-import TextareaAutosize from "react-textarea-autosize"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import { getProjects, createProject, getChats, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateProjectName, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getMessageCount, getChatWithContext, updateChatSystemPrompt } from "./actions"
+import { getProjects, createProject, getChats, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateProjectName, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getMessageCount, getChatWithContext, updateChatSystemPrompt, getProjectDefaults, recordPersonaUsage, incrementUsageMessageCount } from "./actions"
 import { Sidebar } from "@/components/chat/Sidebar"
 import { ChatHeader } from "@/components/chat/ChatHeader"
+import { ChatInputArea } from "@/components/chat/ChatInputArea"
 import { MessagesList, type ChatMessage } from "@/components/chat/MessagesList"
 import { CommandPalette } from "@/components/ui/CommandPalette"
 import { DeleteConfirmDialog } from "@/components/ui/DeleteConfirmDialog"
 import { RenameDialog } from "@/components/ui/RenameDialog"
 import { SystemPromptDialog } from "@/components/ui/SystemPromptDialog"
 import { SettingsDialog } from "@/components/ui/SettingsDialog"
+import { ProjectDefaultsDialog } from "@/components/ui/ProjectDefaultsDialog"
 import { useAppearanceSettings } from "@/hooks/useAppearanceSettings"
 import { useLocalStorage } from "@/hooks/useLocalStorage"
+import { useSmartDefaults } from "@/hooks/useSmartDefaults"
+import { usePersonas } from "@/hooks/usePersonas"
+import { PersonaSuggestionBanner } from "@/components/chat/PersonaSuggestionBanner"
 
 interface Model {
   name: string
@@ -37,7 +41,6 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null)
   const [input, setInput] = useState("")
   const scrollRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Use ref to always get current model in transport body function
   const selectedModelRef = useRef(selectedModel)
@@ -50,9 +53,11 @@ export default function Home() {
   const [standaloneChats, setStandaloneChats] = useState<Chat[]>([])
   const [activeChatId, setActiveChatId] = useState<number | null>(null)
 
-  // Ref for activeChatId (must be after state declaration)
+  // Refs for values used in closures (must be after state declaration)
   const activeChatIdRef = useRef(activeChatId)
   activeChatIdRef.current = activeChatId
+  const activeProjectIdRef = useRef(activeProjectId)
+  activeProjectIdRef.current = activeProjectId
 
   // Command palette state
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
@@ -68,12 +73,17 @@ export default function Home() {
   const [systemPromptDialogOpen, setSystemPromptDialogOpen] = useState(false)
   const [currentSystemPrompt, setCurrentSystemPrompt] = useState<string | null>(null)
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
+  const [projectDefaultsDialogOpen, setProjectDefaultsDialogOpen] = useState(false)
+  const [projectDefaultsTarget, setProjectDefaultsTarget] = useState<{ id: number; name: string } | null>(null)
 
   // Sidebar collapse
   const [sidebarCollapsed, setSidebarCollapsed] = useLocalStorage('sidebar-collapsed', false)
 
   // Appearance settings
   const { fontSize, setFontSize, messageDensity, setMessageDensity } = useAppearanceSettings()
+
+  // Persona management
+  const { getPersonaById, getPersonaByPrompt } = usePersonas()
 
   // Create transport with body as function to always get current values
   const transport = useMemo(() => new DefaultChatTransport({
@@ -134,6 +144,7 @@ export default function Home() {
     onFinish: async ({ message }) => {
       console.log('[onFinish] Message received:', message)
       const currentChatId = activeChatIdRef.current
+      const currentProjectId = activeProjectIdRef.current
 
       // Extract text content from message parts
       const textContent = message.parts
@@ -142,8 +153,25 @@ export default function Home() {
         .join('')
 
       if (currentChatId && textContent.trim()) {
-        await saveMessage(currentChatId, 'assistant', textContent)
+        const result = await saveMessage(currentChatId, 'assistant', textContent)
         console.log('[onFinish] Assistant message saved to DB')
+
+        // Async embed the assistant message (best-effort)
+        if (result?.[0]?.id) {
+          fetch('/api/embed', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              messageId: result[0].id,
+              chatId: currentChatId,
+              projectId: currentProjectId,
+              content: textContent,
+            }),
+          }).catch(() => {}) // Embedding is best-effort
+        }
+
+        // Increment persona usage message count (best-effort)
+        incrementUsageMessageCount(currentChatId).catch(() => {})
 
         // Check if summarization is needed
         const messageCount = await getMessageCount(currentChatId)
@@ -155,6 +183,30 @@ export default function Home() {
   })
 
   const isLoading = status === 'streaming' || status === 'submitted'
+
+  // Extract user message texts for smart defaults
+  const userMessageTexts = useMemo(() =>
+    messages
+      .filter(m => m.role === 'user')
+      .map(m => m.parts
+        ?.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+        .map(p => p.text)
+        .join('') || ''
+      ),
+    [messages]
+  )
+
+  // Smart persona/model suggestions
+  const { suggestion: smartSuggestion, dismiss: dismissSuggestion } = useSmartDefaults(
+    activeProjectId,
+    activeChatId,
+    userMessageTexts,
+    currentSystemPrompt ? 'has-persona' : null, // Simplified: if system prompt is set, don't suggest
+  )
+
+  const suggestedPersona = smartSuggestion.suggestedPersonaId
+    ? getPersonaById(smartSuggestion.suggestedPersonaId)
+    : null
 
   // Debug: log messages changes
   useEffect(() => {
@@ -326,6 +378,25 @@ export default function Home() {
       const [newC] = await createChat(activeProjectId, "New Chat")
       setChats([newC, ...chats])
       setActiveChatId(newC.id)
+
+      // Auto-apply project defaults if configured
+      try {
+        const defaults = await getProjectDefaults(activeProjectId)
+        if (defaults.defaultPersonaId) {
+          const persona = getPersonaById(defaults.defaultPersonaId)
+          if (persona?.prompt) {
+            await updateChatSystemPrompt(newC.id, persona.prompt)
+            setCurrentSystemPrompt(persona.prompt)
+            toast.success(`Applied project default: ${persona.name}`)
+          }
+        }
+        if (defaults.defaultModel) {
+          setSelectedModel(defaults.defaultModel)
+        }
+      } catch {
+        // Defaults are optional, don't block chat creation
+      }
+
       toast.success("Chat created")
     } catch (e) {
       console.error(e)
@@ -375,7 +446,7 @@ export default function Home() {
     // Clear on Escape
     if (e.key === 'Escape') {
       setInput("")
-      textareaRef.current?.blur()
+      ;(e.target as HTMLTextAreaElement).blur()
     }
   }
 
@@ -390,9 +461,24 @@ export default function Home() {
         .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
         .map(part => part.text)
         .join('')
-      // Save user message to database
+      // Save user message to database and trigger embedding
       saveMessage(activeChatId, 'user', textContent)
-        .then(() => console.log('[useEffect] User message saved to DB'))
+        .then((result) => {
+          console.log('[useEffect] User message saved to DB')
+          // Async embed the user message (best-effort)
+          if (result?.[0]?.id) {
+            fetch('/api/embed', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                messageId: result[0].id,
+                chatId: activeChatId,
+                projectId: activeProjectIdRef.current,
+                content: textContent,
+              }),
+            }).catch(() => {}) // Embedding is best-effort
+          }
+        })
         .catch(err => console.error('[useEffect] Error saving user message:', err))
     }
   }, [messages, activeChatId])
@@ -502,11 +588,38 @@ export default function Home() {
       await updateChatSystemPrompt(activeChatId, prompt)
       setCurrentSystemPrompt(prompt)
       toast.success(prompt ? "System instruction saved" : "System instruction cleared")
+
+      // Record persona usage for tracking
+      const matchedPersona = getPersonaByPrompt(prompt)
+      recordPersonaUsage({
+        projectId: activeProjectIdRef.current,
+        chatId: activeChatId,
+        personaId: matchedPersona?.id ?? (prompt ? 'custom' : 'default'),
+        modelUsed: selectedModelRef.current || null,
+      }).catch(() => {}) // Best-effort
     } catch (e) {
       console.error(e)
       setError("Failed to update system instruction.")
     }
   }, [activeChatId])
+
+  const handleOpenProjectSettings = useCallback((projectId: number) => {
+    const project = projects.find(p => p.id === projectId)
+    if (project) {
+      setProjectDefaultsTarget({ id: project.id, name: project.name })
+      setProjectDefaultsDialogOpen(true)
+    }
+  }, [projects])
+
+  const handleApplySuggestion = useCallback(async () => {
+    if (!suggestedPersona) return
+    await handleSaveSystemPrompt(suggestedPersona.prompt || null)
+    if (suggestedPersona.preferredModel) {
+      setSelectedModel(suggestedPersona.preferredModel)
+    }
+    dismissSuggestion()
+    toast.success(`Switched to ${suggestedPersona.name}`)
+  }, [suggestedPersona, handleSaveSystemPrompt, dismissSuggestion])
 
   // Get the current chat title from either chats or standaloneChats
   const currentChatTitle = activeChatId
@@ -543,6 +656,7 @@ export default function Home() {
         onRestoreChat={handleRestoreChat}
         onDeleteChat={handleRequestDelete}
         onOpenSettings={() => setSettingsDialogOpen(true)}
+        onProjectSettings={handleOpenProjectSettings}
       />
 
       {/* Main Chat Area */}
@@ -552,11 +666,8 @@ export default function Home() {
           chatTitle={currentChatTitle}
           models={models}
           selectedModel={selectedModel}
-          systemPrompt={currentSystemPrompt}
           onModelChange={setSelectedModel}
           onTitleChange={handleUpdateChatTitle}
-          onSystemPromptChange={handleSaveSystemPrompt}
-          onSystemPromptClick={() => setSystemPromptDialogOpen(true)}
         />
 
         {/* Error Banner */}
@@ -585,32 +696,35 @@ export default function Home() {
           />
         </div>
 
-        {/* Input Area */}
-        <div className="p-4 border-t border-white/10 bg-white/5">
-          <form onSubmit={handleFormSubmit} className="max-w-3xl mx-auto relative">
-            <TextareaAutosize
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={!activeChatId || isLoading}
-              minRows={1}
-              maxRows={6}
-              className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 pr-12 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all placeholder:text-muted-foreground disabled:opacity-50 resize-none"
-              placeholder={activeChatId ? "Type a message... (Ctrl+Enter to send)" : "Select a chat to start typing..."}
+        {/* Smart Persona Suggestion */}
+        {suggestedPersona && smartSuggestion.reason && (
+          <div className="px-4 pt-2">
+            <PersonaSuggestionBanner
+              personaName={suggestedPersona.name}
+              personaIcon={suggestedPersona.icon}
+              reason={smartSuggestion.reason}
+              onApply={handleApplySuggestion}
+              onDismiss={dismissSuggestion}
+              visible={true}
             />
-            <button
-              type="submit"
-              disabled={isLoading || !input?.trim() || !activeChatId}
-              className="absolute right-2 top-2 p-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground transition-colors disabled:opacity-50"
-            >
-               {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            </button>
-          </form>
-          <div className="text-center mt-2">
-             <p className="text-xs text-muted-foreground">AI can make mistakes. Check important info.</p>
           </div>
-        </div>
+        )}
+
+        {/* Input Area */}
+        <ChatInputArea
+          input={input}
+          onInputChange={setInput}
+          onSend={handleSendMessage}
+          onFormSubmit={handleFormSubmit}
+          onKeyDown={handleKeyDown}
+          isLoading={isLoading}
+          activeChatId={activeChatId}
+          activeProjectId={activeProjectId}
+          systemPrompt={currentSystemPrompt}
+          onSystemPromptChange={handleSaveSystemPrompt}
+          onSystemPromptClick={() => setSystemPromptDialogOpen(true)}
+          onModelChange={setSelectedModel}
+        />
       </main>
 
       {/* Command Palette */}
@@ -666,6 +780,17 @@ export default function Home() {
         messageDensity={messageDensity}
         onMessageDensityChange={setMessageDensity}
       />
+
+      {/* Project Defaults Dialog */}
+      {projectDefaultsTarget && (
+        <ProjectDefaultsDialog
+          open={projectDefaultsDialogOpen}
+          onOpenChange={setProjectDefaultsDialogOpen}
+          projectId={projectDefaultsTarget.id}
+          projectName={projectDefaultsTarget.name}
+          models={models}
+        />
+      )}
     </div>
   )
 }

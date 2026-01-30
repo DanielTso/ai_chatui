@@ -2,7 +2,7 @@
 
 import { memo, useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { ChevronDown, Check, Settings2 } from 'lucide-react'
+import { ChevronDown, Check, Settings2, Cloud, Monitor } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePersonas, type Persona } from '@/hooks/usePersonas'
 
@@ -10,20 +10,37 @@ interface PersonaSelectorProps {
   currentPrompt: string | null
   onSelect: (prompt: string | null) => void
   onCustomize?: () => void
+  onModelChange?: (model: string) => void
   disabled?: boolean
+  side?: 'top' | 'bottom'
 }
 
 export const PersonaSelector = memo(function PersonaSelector({
   currentPrompt,
   onSelect,
   onCustomize,
+  onModelChange,
   disabled = false,
+  side = 'bottom',
 }: PersonaSelectorProps) {
   const [open, setOpen] = useState(false)
   const { personas, getPersonaByPrompt } = usePersonas()
 
   const currentPersona = getPersonaByPrompt(currentPrompt)
   const isCustomPrompt = currentPrompt && !currentPersona
+
+  // Split personas into regular and combo (those with modelConstraint)
+  const regularPersonas = personas.filter(p => !p.modelConstraint)
+  const comboPresets = personas.filter(p => p.modelConstraint)
+
+  const handleSelect = (persona: Persona) => {
+    onSelect(persona.prompt || null)
+    // If combo preset has a preferred model, auto-switch
+    if (persona.preferredModel && onModelChange) {
+      onModelChange(persona.preferredModel)
+    }
+    setOpen(false)
+  }
 
   return (
     <DropdownMenu.Root open={open} onOpenChange={setOpen}>
@@ -51,15 +68,17 @@ export const PersonaSelector = memo(function PersonaSelector({
 
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="min-w-[200px] glass-panel rounded-lg p-1.5 shadow-xl z-50"
+          className="min-w-[220px] max-h-[400px] overflow-y-auto glass-panel rounded-lg p-1.5 shadow-xl z-50"
           sideOffset={5}
+          side={side}
           align="start"
         >
+          {/* Regular Personas Section */}
           <DropdownMenu.Label className="px-2 py-1.5 text-xs text-muted-foreground font-medium">
-            Persona Presets
+            Personas
           </DropdownMenu.Label>
 
-          {personas.map((persona) => (
+          {regularPersonas.map((persona) => (
             <DropdownMenu.Item
               key={persona.id}
               className={cn(
@@ -67,10 +86,7 @@ export const PersonaSelector = memo(function PersonaSelector({
                 "hover:bg-white/10",
                 currentPersona?.id === persona.id && "bg-primary/10 text-primary"
               )}
-              onSelect={() => {
-                onSelect(persona.prompt || null)
-                setOpen(false)
-              }}
+              onSelect={() => handleSelect(persona)}
             >
               <span className="text-base w-5 text-center">{persona.icon}</span>
               <span className="flex-1">{persona.name}</span>
@@ -84,6 +100,53 @@ export const PersonaSelector = memo(function PersonaSelector({
               )}
             </DropdownMenu.Item>
           ))}
+
+          {/* Combo Presets Section */}
+          {comboPresets.length > 0 && (
+            <>
+              <DropdownMenu.Separator className="h-px bg-white/10 my-1" />
+              <DropdownMenu.Label className="px-2 py-1.5 text-xs text-muted-foreground font-medium">
+                Model + Persona
+              </DropdownMenu.Label>
+
+              {comboPresets.map((persona) => (
+                <DropdownMenu.Item
+                  key={persona.id}
+                  className={cn(
+                    "flex items-center gap-2 px-2 py-1.5 text-sm rounded cursor-pointer outline-none transition-colors",
+                    "hover:bg-white/10",
+                    currentPersona?.id === persona.id && "bg-primary/10 text-primary"
+                  )}
+                  onSelect={() => handleSelect(persona)}
+                >
+                  <span className="text-base w-5 text-center">{persona.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate">{persona.name}</span>
+                      {persona.modelConstraint === 'cloud' && (
+                        <span className="shrink-0 flex items-center gap-0.5 text-[10px] px-1 py-0.5 bg-blue-500/15 text-blue-300 rounded">
+                          <Cloud className="h-2.5 w-2.5" />
+                          Cloud
+                        </span>
+                      )}
+                      {persona.modelConstraint === 'local' && (
+                        <span className="shrink-0 flex items-center gap-0.5 text-[10px] px-1 py-0.5 bg-green-500/15 text-green-300 rounded">
+                          <Monitor className="h-2.5 w-2.5" />
+                          Local
+                        </span>
+                      )}
+                    </div>
+                    {persona.description && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{persona.description}</p>
+                    )}
+                  </div>
+                  {currentPersona?.id === persona.id && (
+                    <Check className="h-3.5 w-3.5 shrink-0" />
+                  )}
+                </DropdownMenu.Item>
+              ))}
+            </>
+          )}
 
           {onCustomize && (
             <>

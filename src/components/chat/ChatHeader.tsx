@@ -3,7 +3,6 @@
 import { memo, useState, useRef, useEffect } from "react"
 import { MessageSquare, Edit2, Check, X } from "lucide-react"
 import { ModelSelect } from "@/components/ui/ModelSelect"
-import { PersonaSelector } from "@/components/ui/PersonaSelector"
 
 interface Model {
   name: string
@@ -16,11 +15,8 @@ interface ChatHeaderProps {
   chatTitle: string | undefined
   models: Model[]
   selectedModel: string
-  systemPrompt: string | null
   onModelChange: (model: string) => void
   onTitleChange?: (id: number, title: string) => void
-  onSystemPromptChange?: (prompt: string | null) => void
-  onSystemPromptClick?: () => void
 }
 
 export const ChatHeader = memo(function ChatHeader({
@@ -28,11 +24,8 @@ export const ChatHeader = memo(function ChatHeader({
   chatTitle,
   models,
   selectedModel,
-  systemPrompt,
   onModelChange,
   onTitleChange,
-  onSystemPromptChange,
-  onSystemPromptClick,
 }: ChatHeaderProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editedTitle, setEditedTitle] = useState(chatTitle || "")
@@ -118,23 +111,13 @@ export const ChatHeader = memo(function ChatHeader({
           </div>
         )}
       </div>
-      <div className="flex items-center gap-3">
-        {chatId && onSystemPromptChange && (
-          <PersonaSelector
-            currentPrompt={systemPrompt}
-            onSelect={onSystemPromptChange}
-            onCustomize={onSystemPromptClick}
-            disabled={!chatId}
-          />
-        )}
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Model:</span>
-          <ModelSelect
-            models={models}
-            value={selectedModel}
-            onChange={onModelChange}
-          />
-        </div>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">Model:</span>
+        <ModelSelect
+          models={models}
+          value={selectedModel}
+          onChange={onModelChange}
+        />
       </div>
     </header>
   )

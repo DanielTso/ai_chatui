@@ -1,7 +1,7 @@
 'use server'
 
 import { db } from '@/db'
-import { projects, chats, messages, settings } from '@/db/schema'
+import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics } from '@/db/schema'
 import { eq, desc, isNull, isNotNull, and, gt, asc, count, inArray } from 'drizzle-orm'
 
 export async function getProjects() {
@@ -199,4 +199,139 @@ export async function setSettings(entries: { key: string; value: string }[]) {
     results.push(result)
   }
   return results
+}
+
+// ── Embedding Actions ──
+
+export async function saveMessageEmbedding(
+  messageId: number,
+  chatId: number,
+  projectId: number | null,
+  content: string,
+  embedding: number[]
+) {
+  return await db.insert(messageEmbeddings).values({
+    messageId,
+    chatId,
+    projectId,
+    content,
+    embedding: JSON.stringify(embedding),
+  }).returning()
+}
+
+export async function getEmbeddingsForChat(chatId: number) {
+  return await db.select().from(messageEmbeddings)
+    .where(eq(messageEmbeddings.chatId, chatId))
+    .all()
+}
+
+export async function getEmbeddingsForProject(projectId: number) {
+  return await db.select().from(messageEmbeddings)
+    .where(eq(messageEmbeddings.projectId, projectId))
+    .all()
+}
+
+export async function getAllEmbeddings() {
+  return await db.select().from(messageEmbeddings).all()
+}
+
+export async function getEmbeddingCount(scope?: { chatId?: number; projectId?: number }) {
+  if (scope?.projectId) {
+    const result = await db.select({ value: count() }).from(messageEmbeddings)
+      .where(eq(messageEmbeddings.projectId, scope.projectId))
+    return result[0]?.value ?? 0
+  }
+  if (scope?.chatId) {
+    const result = await db.select({ value: count() }).from(messageEmbeddings)
+      .where(eq(messageEmbeddings.chatId, scope.chatId))
+    return result[0]?.value ?? 0
+  }
+  const result = await db.select({ value: count() }).from(messageEmbeddings)
+  return result[0]?.value ?? 0
+}
+
+// ── Project Defaults Actions ──
+
+export async function updateProjectDefaults(
+  projectId: number,
+  defaults: { defaultPersonaId?: string | null; defaultModel?: string | null }
+) {
+  return await db.update(projects)
+    .set(defaults)
+    .where(eq(projects.id, projectId))
+    .returning()
+}
+
+export async function getProjectDefaults(projectId: number) {
+  const result = await db.select({
+    defaultPersonaId: projects.defaultPersonaId,
+    defaultModel: projects.defaultModel,
+  }).from(projects).where(eq(projects.id, projectId)).get()
+  return result ?? { defaultPersonaId: null, defaultModel: null }
+}
+
+// ── Persona Usage Tracking Actions ──
+
+export async function recordPersonaUsage(data: {
+  projectId: number | null
+  chatId: number
+  personaId: string
+  modelUsed: string | null
+}) {
+  return await db.insert(personaUsage).values({
+    projectId: data.projectId,
+    chatId: data.chatId,
+    personaId: data.personaId,
+    modelUsed: data.modelUsed,
+    messageCount: 1,
+    lastUsedAt: new Date(),
+  }).returning()
+}
+
+export async function incrementUsageMessageCount(chatId: number) {
+  // Get existing usage record for this chat
+  const existing = await db.select().from(personaUsage)
+    .where(eq(personaUsage.chatId, chatId))
+    .orderBy(desc(personaUsage.lastUsedAt))
+    .limit(1)
+    .get()
+
+  if (existing) {
+    return await db.update(personaUsage)
+      .set({
+        messageCount: (existing.messageCount ?? 0) + 1,
+        lastUsedAt: new Date(),
+      })
+      .where(eq(personaUsage.id, existing.id))
+      .returning()
+  }
+}
+
+export async function getProjectPersonaStats(projectId: number) {
+  return await db.select().from(personaUsage)
+    .where(eq(personaUsage.projectId, projectId))
+    .orderBy(desc(personaUsage.messageCount))
+    .all()
+}
+
+// ── Chat Topics Actions ──
+
+export async function saveChatTopics(chatId: number, topics: { topic: string; confidence: number }[]) {
+  const results = []
+  for (const t of topics) {
+    const result = await db.insert(chatTopics).values({
+      chatId,
+      topic: t.topic,
+      confidence: t.confidence,
+    }).returning()
+    results.push(result)
+  }
+  return results
+}
+
+export async function getChatTopics(chatId: number) {
+  return await db.select().from(chatTopics)
+    .where(eq(chatTopics.chatId, chatId))
+    .orderBy(desc(chatTopics.confidence))
+    .all()
 }

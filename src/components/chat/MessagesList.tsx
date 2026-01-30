@@ -1,7 +1,7 @@
 "use client"
 
 import { memo } from "react"
-import { Folder, MessageSquare } from "lucide-react"
+import { Folder, MessageSquare, ExternalLink, Globe } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { motion, AnimatePresence } from "framer-motion"
@@ -29,6 +29,53 @@ function getMessageText(message: UIMessage): string {
     .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
     .map(part => part.text)
     .join('')
+}
+
+// Helper to extract source-url parts from a message
+interface SourceUrl {
+  sourceId: string
+  url: string
+  title?: string
+}
+
+function getMessageSources(message: UIMessage): SourceUrl[] {
+  return message.parts
+    .filter((part): part is SourceUrl & { type: 'source-url' } => part.type === 'source-url')
+    .reduce((unique, src) => {
+      if (!unique.some(s => s.url === src.url)) unique.push(src)
+      return unique
+    }, [] as SourceUrl[])
+}
+
+function SourcesList({ sources }: { sources: SourceUrl[] }) {
+  if (sources.length === 0) return null
+  return (
+    <div className="mt-2 pt-2 border-t border-white/5">
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <Globe className="h-3 w-3 text-muted-foreground/60" />
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-medium">Sources</span>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {sources.map((src) => {
+          let hostname = ''
+          try { hostname = new URL(src.url).hostname.replace(/^www\./, '') } catch { hostname = src.url }
+          return (
+            <a
+              key={src.sourceId}
+              href={src.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs bg-white/5 border border-white/10 text-muted-foreground hover:text-foreground hover:bg-white/10 hover:border-white/20 transition-colors"
+              title={src.title || src.url}
+            >
+              <ExternalLink className="h-2.5 w-2.5 shrink-0" />
+              <span className="truncate max-w-[200px]">{src.title || hostname}</span>
+            </a>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 // Move markdown components outside to prevent recreation on every render
@@ -142,6 +189,7 @@ export const MessagesList = memo(function MessagesList({
                       {getMessageText(m)}
                     </ReactMarkdown>
                   </div>
+                  {m.role === 'assistant' && <SourcesList sources={getMessageSources(m)} />}
                 </div>
 
                 {/* Timestamp and Actions Row */}

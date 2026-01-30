@@ -21,7 +21,11 @@ vi.mock('ai', () => ({
   convertToModelMessages: (...args: unknown[]) => mockConvertToModelMessages(...args),
 }))
 
-const mockGoogleFn = vi.fn((model: string) => ({ modelId: model, provider: 'google' }))
+const mockGoogleSearch = vi.fn(() => ({ type: 'provider-defined', id: 'google_search' }))
+const mockGoogleFn = Object.assign(
+  vi.fn((model: string) => ({ modelId: model, provider: 'google' })),
+  { tools: { googleSearch: mockGoogleSearch } }
+)
 vi.mock('@ai-sdk/google', () => ({
   createGoogleGenerativeAI: () => mockGoogleFn,
 }))
@@ -54,7 +58,10 @@ describe('POST /api/chat', () => {
       convertToModelMessages: (...args: unknown[]) => mockConvertToModelMessages(...args),
     }))
     vi.doMock('@ai-sdk/google', () => ({
-      createGoogleGenerativeAI: () => mockGoogleFn,
+      createGoogleGenerativeAI: () => Object.assign(
+        (...args: unknown[]) => mockGoogleFn(...args),
+        { tools: { googleSearch: mockGoogleSearch } }
+      ),
     }))
     vi.doMock('ai-sdk-ollama', () => ({
       createOllama: () => mockOllamaFn,
@@ -62,6 +69,10 @@ describe('POST /api/chat', () => {
     vi.doMock('@/lib/settings', () => ({
       getGeminiApiKey: () => Promise.resolve('test-key'),
       getOllamaBaseUrl: () => Promise.resolve('http://localhost:11434'),
+    }))
+    vi.doMock('@/lib/embeddings', () => ({
+      generateEmbedding: () => Promise.reject(new Error('test: embeddings unavailable')),
+      findSimilarMessages: () => Promise.resolve([]),
     }))
 
     const { POST } = await import('@/app/api/chat/route')

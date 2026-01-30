@@ -1,0 +1,69 @@
+import { embedAndStore, ensureEmbeddingModel } from '@/lib/embeddings';
+import { getEmbeddingCount } from '@/app/actions';
+
+export async function GET(req: Request) {
+  try {
+    const url = new URL(req.url);
+    const chatId = url.searchParams.get('chatId');
+    const projectId = url.searchParams.get('projectId');
+
+    const modelAvailable = await ensureEmbeddingModel();
+
+    const scope: { chatId?: number; projectId?: number } = {};
+    if (projectId) scope.projectId = Number(projectId);
+    else if (chatId) scope.chatId = Number(chatId);
+
+    const embeddingCount = await getEmbeddingCount(scope);
+
+    return new Response(JSON.stringify({
+      available: modelAvailable,
+      embeddingCount,
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch {
+    return new Response(JSON.stringify({ available: false, embeddingCount: 0 }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const { messageId, chatId, projectId, content } = await req.json();
+
+    if (!messageId || !chatId || !content) {
+      return new Response(JSON.stringify({ error: 'Missing required fields' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Check if embedding model is available
+    const modelAvailable = await ensureEmbeddingModel();
+    if (!modelAvailable) {
+      return new Response(JSON.stringify({ success: false, reason: 'Embedding model not available' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    await embedAndStore(messageId, chatId, projectId ?? null, content);
+
+    return new Response(JSON.stringify({ success: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (error) {
+    console.error('[Embed API] Error:', error);
+    return new Response(JSON.stringify({
+      success: false,
+      error: error instanceof Error ? error.message : 'Embedding failed',
+    }), {
+      status: 200, // Return 200 even on error since embedding is best-effort
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+}
