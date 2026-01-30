@@ -556,13 +556,18 @@ export default function Home() {
 
   const handleConfirmDelete = useCallback(async () => {
     if (!deleteTargetId) return
-    await deleteChat(deleteTargetId)
-    setChats(chats.filter(c => c.id !== deleteTargetId))
-    setStandaloneChats(standaloneChats.filter(c => c.id !== deleteTargetId))
-    setArchivedChats(archivedChats.filter(c => c.id !== deleteTargetId))
-    if (activeChatId === deleteTargetId) setActiveChatId(null)
-    setDeleteTargetId(null)
-    toast.success("Chat deleted")
+    try {
+      await deleteChat(deleteTargetId)
+      setChats(chats.filter(c => c.id !== deleteTargetId))
+      setStandaloneChats(standaloneChats.filter(c => c.id !== deleteTargetId))
+      setArchivedChats(archivedChats.filter(c => c.id !== deleteTargetId))
+      if (activeChatId === deleteTargetId) setActiveChatId(null)
+      setDeleteTargetId(null)
+      toast.success("Chat deleted")
+    } catch (e) {
+      console.error("Delete failed:", e)
+      toast.error("Failed to delete chat")
+    }
   }, [deleteTargetId, chats, standaloneChats, archivedChats, activeChatId])
 
   const handleRequestRename = useCallback((id: number) => {

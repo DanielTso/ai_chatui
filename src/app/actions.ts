@@ -13,7 +13,7 @@ export async function createProject(name: string) {
 }
 
 export async function deleteProject(id: number) {
-  return await db.delete(projects).where(eq(projects.id, id))
+  await db.delete(projects).where(eq(projects.id, id))
 }
 
 export async function updateProjectName(id: number, name: string) {
@@ -48,7 +48,7 @@ export async function createStandaloneChat(title: string) {
 }
 
 export async function deleteChat(id: number) {
-  return await db.delete(chats).where(eq(chats.id, id))
+  await db.delete(chats).where(eq(chats.id, id))
 }
 
 export async function updateChatTitle(id: number, title: string) {
@@ -60,7 +60,7 @@ export async function saveMessage(chatId: number, role: string, content: string)
 }
 
 export async function deleteMessage(id: number) {
-  return await db.delete(messages).where(eq(messages.id, id))
+  await db.delete(messages).where(eq(messages.id, id))
 }
 
 export async function getChatMessages(chatId: number, limit: number = 100) {
