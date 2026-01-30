@@ -1,6 +1,6 @@
 import { embed } from 'ai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
-import { getOllamaBaseUrl, getGeminiApiKey } from './settings'
+import { getOllamaBaseUrl, getGeminiApiKey, isCloudEnvironment } from './settings'
 import { saveMessageEmbedding, getEmbeddingsForChat, getEmbeddingsForProject, getAllEmbeddings } from '@/app/actions'
 
 const EMBEDDING_MODEL = 'nomic-embed-text'
@@ -13,24 +13,26 @@ export type EmbeddingProvider = 'ollama' | 'gemini' | null
  * Returns the provider name ('ollama' or 'gemini') or null if none available.
  */
 export async function ensureEmbeddingModel(): Promise<{ available: boolean; provider: EmbeddingProvider }> {
-  // Try Ollama first
-  try {
-    const baseUrl = await getOllamaBaseUrl()
-    const res = await fetch(`${baseUrl}/api/tags`, {
-      signal: AbortSignal.timeout(3000),
-    })
-    if (res.ok) {
-      const data = await res.json()
-      const models: { name: string }[] = data.models || []
-      if (models.some(m => m.name.startsWith(EMBEDDING_MODEL))) {
-        return { available: true, provider: 'ollama' }
+  // Skip Ollama on cloud — go straight to Gemini
+  if (!isCloudEnvironment()) {
+    try {
+      const baseUrl = await getOllamaBaseUrl()
+      const res = await fetch(`${baseUrl}/api/tags`, {
+        signal: AbortSignal.timeout(1000),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const models: { name: string }[] = data.models || []
+        if (models.some(m => m.name.startsWith(EMBEDDING_MODEL))) {
+          return { available: true, provider: 'ollama' }
+        }
       }
+    } catch {
+      // Ollama unavailable, try Gemini
     }
-  } catch {
-    // Ollama unavailable, try Gemini
   }
 
-  // Fall back to Gemini
+  // Gemini fallback (or primary on cloud)
   const apiKey = await getGeminiApiKey()
   if (apiKey) {
     return { available: true, provider: 'gemini' }
@@ -100,17 +102,15 @@ export async function generateEmbedding(
   text: string,
   taskType: 'query' | 'document' = 'document'
 ): Promise<number[]> {
-  // Try Ollama first
-  try {
-    const result = await generateEmbeddingWithOllama(text)
-    console.log('[Embeddings] Using Ollama')
-    return result
-  } catch {
-    // Ollama unavailable, try Gemini
+  // Skip Ollama on cloud — use Gemini directly
+  if (!isCloudEnvironment()) {
+    try {
+      return await generateEmbeddingWithOllama(text)
+    } catch {
+      // Ollama unavailable, try Gemini
+    }
   }
 
-  // Fall back to Gemini
-  console.log('[Embeddings] Ollama unavailable, using Gemini')
   return generateEmbeddingWithGemini(text, taskType)
 }
 

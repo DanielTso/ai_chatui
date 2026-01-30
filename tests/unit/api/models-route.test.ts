@@ -11,11 +11,17 @@ describe('GET /api/models', () => {
     globalThis.fetch = originalFetch
   })
 
-  function mockSettings(apiKey: string | null = 'test-key', ollamaUrl: string = 'http://localhost:11434', dashScopeApiKey: string | null = null) {
+  function mockSettings(
+    apiKey: string | null = 'test-key',
+    ollamaUrl: string = 'http://localhost:11434',
+    dashScopeApiKey: string | null = null,
+    cloud: boolean = false
+  ) {
     vi.doMock('@/lib/settings', () => ({
       getGeminiApiKey: () => Promise.resolve(apiKey),
       getOllamaBaseUrl: () => Promise.resolve(ollamaUrl),
       getDashScopeApiKey: () => Promise.resolve(dashScopeApiKey),
+      isCloudEnvironment: () => cloud,
     }))
   }
 
@@ -69,5 +75,22 @@ describe('GET /api/models', () => {
     const response = await GET()
 
     expect(response.headers.get('Cache-Control')).toBe('public, max-age=300')
+  })
+
+  it('skips Ollama fetch entirely on cloud environment', async () => {
+    const mockFetch = vi.fn()
+    globalThis.fetch = mockFetch
+    mockSettings('test-key', 'http://localhost:11434', null, true)
+
+    const { GET } = await import('@/app/api/models/route')
+    const response = await GET()
+    const data = await response.json()
+
+    // Should NOT have called fetch at all (Ollama skipped)
+    expect(mockFetch).not.toHaveBeenCalled()
+    // Should still return Gemini models
+    expect(data.models.length).toBeGreaterThanOrEqual(3)
+    expect(data.models.some((m: { model: string }) => m.model.startsWith('gemini'))).toBe(true)
+    expect(data.models.every((m: { name: string }) => !m.name?.includes('llama'))).toBe(true)
   })
 })

@@ -3,6 +3,14 @@ import { settings } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 
 /**
+ * Detect cloud environment (Vercel/Turso).
+ * When TURSO_DATABASE_URL is set, Ollama can't exist — skip all local network calls.
+ */
+export function isCloudEnvironment(): boolean {
+  return !!process.env.TURSO_DATABASE_URL
+}
+
+/**
  * Get a setting from DB first, falling back to an environment variable.
  */
 export async function getServerSetting(key: string, envFallback?: string): Promise<string | null> {

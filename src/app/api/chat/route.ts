@@ -14,9 +14,6 @@ export async function POST(req: Request) {
     const { messages, model, chatId } = await req.json();
     const modelName = model || 'gemini-3-flash-preview';
 
-    console.log(`[API] Request for model: ${modelName}`);
-    console.log(`[API] Messages count: ${messages?.length}`);
-
     // Determine which provider to use based on model name
     const isGeminiModel = modelName.startsWith('gemini');
     const isQwenModel = modelName.startsWith('qwen');
@@ -34,7 +31,6 @@ export async function POST(req: Request) {
       googleTools = {
         google_search: google.tools.googleSearch({}),
       };
-      console.log('[API] Google Search grounding enabled');
     } else if (isQwenModel) {
       const apiKey = await getDashScopeApiKey();
       if (!apiKey) {
@@ -62,7 +58,6 @@ export async function POST(req: Request) {
       // 1. System prompt (always included, never trimmed)
       if (chat?.systemPrompt) {
         systemPrompt = chat.systemPrompt;
-        console.log(`[API] Using system prompt: ${systemPrompt.substring(0, 50)}...`);
       }
 
       // 2. Semantic retrieval (NEW) — find relevant past messages
@@ -88,13 +83,11 @@ export async function POST(req: Request) {
 
             if (relevantPast.length > 0) {
               semanticContext = relevantPast.map(s => s.content).join('\n---\n');
-              console.log(`[API] Semantic context: ${relevantPast.length} relevant past messages`);
             }
           }
         }
-      } catch (e) {
+      } catch {
         // Embedding unavailable — silently skip
-        console.log('[API] Semantic retrieval skipped:', e instanceof Error ? e.message : 'unavailable');
       }
 
       // 3. Summary context (existing behavior)
@@ -148,7 +141,6 @@ export async function POST(req: Request) {
         );
 
         contextMessages = [...contextPrefix, ...recentMessages];
-        console.log(`[API] Using hybrid context: ${semanticContext ? 'semantic + ' : ''}summary + ${recentMessages.length} recent messages`);
       } else if (semanticContext) {
         // No summary but semantic context available
         const semanticPrefix: UIMessage[] = [
@@ -170,7 +162,6 @@ export async function POST(req: Request) {
           }
         ];
         contextMessages = [...semanticPrefix, ...contextMessages];
-        console.log(`[API] Using semantic context with ${contextMessages.length - 2} messages`);
       }
     }
 
