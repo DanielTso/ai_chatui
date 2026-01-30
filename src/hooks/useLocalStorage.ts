@@ -3,23 +3,23 @@
 import { useState, useEffect, useCallback } from 'react'
 
 export function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T | ((prev: T) => T)) => void] {
-  // Initialize state with a function to avoid SSR issues
-  const [storedValue, setStoredValue] = useState<T>(() => {
-    if (typeof window === 'undefined') {
-      return initialValue
-    }
+  // Always initialize with defaultValue to match server render and avoid hydration mismatch
+  const [storedValue, setStoredValue] = useState<T>(initialValue)
+
+  // Hydrate from localStorage after mount (client-only)
+  useEffect(() => {
     try {
       const item = window.localStorage.getItem(key)
-      return item ? JSON.parse(item) : initialValue
+      if (item !== null) {
+        setStoredValue(JSON.parse(item))
+      }
     } catch (error) {
       console.warn(`Error reading localStorage key "${key}":`, error)
-      return initialValue
     }
-  })
+  }, [key])
 
   // Sync state to localStorage whenever it changes
   useEffect(() => {
-    if (typeof window === 'undefined') return
     try {
       window.localStorage.setItem(key, JSON.stringify(storedValue))
     } catch (error) {
