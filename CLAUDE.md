@@ -42,8 +42,8 @@ Next.js 16 App Router chat application with hybrid AI backend (Google Gemini clo
    - `POST /api/chat` — Streams LLM responses. Routes to Gemini or Ollama based on model name prefix (`gemini` → Google, else → Ollama). Applies four-layer context: system prompt → semantic retrieval → summary → recent 20 messages. Gemini models have Google Search grounding enabled automatically.
    - `GET /api/models` — Lists available models from both providers. Caches for 5 minutes.
    - `POST /api/summarize` — Compresses older messages into an LLM-generated summary. Auto-triggers at 30+ messages, keeps last 10 in full detail.
-   - `POST /api/embed` — Async embedding generation via Ollama `nomic-embed-text`. Called after each message exchange (best-effort).
-   - `GET /api/embed` — Returns embedding status (`available`, `embeddingCount`) for a chat or project scope.
+   - `POST /api/embed` — Async embedding generation via Ollama `nomic-embed-text` or Gemini `text-embedding-004` (cloud fallback). Called after each message exchange (best-effort).
+   - `GET /api/embed` — Returns embedding status (`available`, `provider`, `embeddingCount`) for a chat or project scope.
    - `POST /api/classify` — LLM-based conversation topic classification. Triggers after 3+ messages, cached per chat.
 
 ### Component Structure
@@ -52,7 +52,7 @@ Next.js 16 App Router chat application with hybrid AI backend (Google Gemini clo
 - `src/components/ui/` — Reusable UI: `CommandPalette` (Cmd+K), `PersonaSelector` (6 built-in presets + 5 model+persona combos, grouped dropdown with Cloud/Local badges), `ModelSelect`, `SettingsDialog` (tabbed settings with API, Appearance, Model Defaults), `ProjectDefaultsDialog` (per-project persona/model defaults with usage stats), `SystemPromptDialog`, `RenameDialog`, `DeleteConfirmDialog`, `Toaster` (sonner)
 - `src/components/settings/` — Settings tab components: `ApiSettingsTab` (Gemini key, Ollama URL + test), `AppearanceSettingsTab` (theme, font size, density), `ModelDefaultsSettingsTab` (default model, system prompt, persona management)
 - `src/hooks/` — `useLocalStorage<T>` (generic localStorage with SSR safety, deferred hydration to avoid mismatch), `usePersonas` (persona management with combo presets), `useCollapseState` (sidebar section state), `useAppearanceSettings` (font size + message density), `useSmartDefaults` (three-layer persona suggestion: project defaults → usage patterns → keyword heuristics)
-- `src/lib/` — `utils.ts` (`cn()` via clsx + tailwind-merge), `formatTime.ts` (relative timestamps), `settings.ts` (server-side DB-first/env-fallback settings helper), `embeddings.ts` (Ollama embedding generation, cosine similarity, vector search), `topicDetection.ts` (keyword-based conversation topic heuristics)
+- `src/lib/` — `utils.ts` (`cn()` via clsx + tailwind-merge), `formatTime.ts` (relative timestamps), `settings.ts` (server-side DB-first/env-fallback settings helper), `embeddings.ts` (hybrid Ollama/Gemini embedding generation, cosine similarity, vector search), `topicDetection.ts` (keyword-based conversation topic heuristics)
 
 ### Database
 
@@ -80,11 +80,11 @@ Tailwind CSS v4 with a glassmorphism design system. Key patterns:
 
 The `/api/chat` route builds context using four layers (in order):
 1. **System prompt** — Always included, never trimmed
-2. **Semantic retrieval** — Embeds the latest user message via Ollama `nomic-embed-text`, finds top-5 similar past messages (cosine similarity ≥ 0.7) scoped to the current project. Injected as synthetic user/assistant context messages.
+2. **Semantic retrieval** — Embeds the latest user message (Ollama `nomic-embed-text` with Gemini `text-embedding-004` cloud fallback, using `'query'` task type), finds top-5 similar past messages (cosine similarity ≥ 0.7) scoped to the current project. Injected as synthetic user/assistant context messages.
 3. **Summary** — Compressed older messages (auto-triggers at 30+ messages, keeps last 10 in full)
 4. **Recent messages** — Last 20 messages in full detail
 
-All layers degrade gracefully. If Ollama is offline, semantic retrieval is silently skipped.
+All layers degrade gracefully. If both Ollama and Gemini are unavailable, semantic retrieval is silently skipped.
 
 ### Google Search Grounding
 
@@ -94,13 +94,15 @@ Gemini models automatically have Google Search enabled via `google.tools.googleS
 
 Messages are embedded asynchronously after each exchange via `POST /api/embed`. The pipeline:
 1. Client calls `/api/embed` with `{ messageId, chatId, projectId, content }` in the `onFinish` callback
-2. Server checks `ensureEmbeddingModel()` — verifies `nomic-embed-text` is available in Ollama
-3. Generates 768-dim float vector via Ollama's `/api/embeddings` endpoint
+2. Server checks `ensureEmbeddingModel()` — tries Ollama `nomic-embed-text` first, falls back to Gemini `text-embedding-004` if Ollama is unavailable
+3. Generates 768-dim float vector via the available provider (Ollama `/api/embeddings` or AI SDK `embed()` with `outputDimensionality: 768`)
 4. Stores as JSON-serialized array in `message_embeddings` table
 
-Retrieval uses brute-force cosine similarity (fast up to ~50K vectors). The `ChatInputArea` toolbar shows a brain icon indicator: green with embedding count when active, gray "Memory off" when Ollama/model unavailable.
+Both providers produce 768-dim vectors, so embeddings from either source are fully cross-compatible for cosine similarity. The `generateEmbedding()` function accepts an optional `taskType` parameter (`'query'` or `'document'`) — Gemini uses this for task-specific optimization (`RETRIEVAL_QUERY` vs `RETRIEVAL_DOCUMENT`); Ollama ignores it.
 
-**Requires**: `ollama pull nomic-embed-text` (runtime setup, not a package dependency).
+Retrieval uses brute-force cosine similarity (fast up to ~50K vectors). The `ChatInputArea` toolbar shows a brain icon indicator: green with embedding count and provider name ("Ollama" or "Gemini") when active, gray "Memory off" when neither provider is available.
+
+**Requires at least one of**: `ollama pull nomic-embed-text` (local) or a Gemini API key (cloud fallback).
 
 ## Settings System
 
