@@ -399,7 +399,16 @@ export async function updateChunkEmbedding(chunkId: number, embedding: number[])
 }
 
 export async function getDocumentChunksForProject(projectId: number) {
-  return await db.select().from(documentChunks)
+  return await db.select({
+    id: documentChunks.id,
+    documentId: documentChunks.documentId,
+    projectId: documentChunks.projectId,
+    chunkIndex: documentChunks.chunkIndex,
+    content: documentChunks.content,
+    embedding: documentChunks.embedding,
+    filename: documents.filename,
+  }).from(documentChunks)
+    .innerJoin(documents, eq(documentChunks.documentId, documents.id))
     .where(
       and(
         eq(documentChunks.projectId, projectId),

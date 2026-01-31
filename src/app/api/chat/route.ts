@@ -94,7 +94,9 @@ export async function POST(req: Request) {
                   queryEmbedding, chat.projectId, 3, 0.5
                 );
                 if (relevantChunks.length > 0) {
-                  documentContext = relevantChunks.map(c => c.content).join('\n---\n');
+                  documentContext = relevantChunks
+                    .map(c => `[From: ${c.filename}]\n${c.content}`)
+                    .join('\n---\n');
                 }
               } catch {
                 // Document retrieval is best-effort

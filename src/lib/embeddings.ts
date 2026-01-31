@@ -184,7 +184,7 @@ export async function findSimilarDocumentChunks(
   projectId: number,
   topK: number = 3,
   threshold: number = 0.5
-): Promise<{ content: string; similarity: number; chunkId: number; documentId: number }[]> {
+): Promise<{ content: string; similarity: number; chunkId: number; documentId: number; filename: string }[]> {
   const chunks = await getDocumentChunksForProject(projectId)
 
   const scored = chunks.map(c => {
@@ -194,6 +194,7 @@ export async function findSimilarDocumentChunks(
       similarity: cosineSimilarity(queryEmbedding, vector),
       chunkId: c.id,
       documentId: c.documentId,
+      filename: c.filename,
     }
   })
 
