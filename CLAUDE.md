@@ -312,3 +312,9 @@ Project-level MCP servers configured in `~/.claude.json` for this project:
 | GitHub | http | PR/issue management, code search |
 | Sentry | http | Error tracking and stack trace analysis |
 | Vercel | http | Deployment management and build log analysis |
+
+## Chat Logs
+
+Development session logs with Claude Code are stored in `docs/`. **Before compacting context or ending a long session, always update the relevant chat log with decisions made and work completed, then commit and push.**
+
+- [`docs/chatlog-2026-01-31-document-rag.md`](docs/chatlog-2026-01-31-document-rag.md) — Document RAG implementation (schema, chunking, embeddings, API, UI, testing, deployment)
