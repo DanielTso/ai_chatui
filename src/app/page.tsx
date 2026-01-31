@@ -866,15 +866,13 @@ export default function Home() {
           />
         ) : (
           <>
-            <ChatHeader
-              chatId={activeChatId}
-              chatTitle={currentChatTitle}
-              models={models}
-              selectedModel={selectedModel}
-              onModelChange={setSelectedModel}
-              onTitleChange={handleUpdateChatTitle}
-            />
-            <div className="flex-1" />
+            <div className="flex-1 flex flex-col items-center justify-center gap-4">
+              <img src="/logo.svg" alt="Atelier AI" className="h-12 w-12 opacity-60" />
+              <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
+                Atelier AI
+              </h2>
+              <p className="text-sm text-muted-foreground">Start typing to begin a conversation</p>
+            </div>
             <ChatInputArea
               input={input}
               onInputChange={setInput}
