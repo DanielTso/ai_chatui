@@ -59,27 +59,30 @@ Atelier AI is a Next.js 16 App Router chat application with hybrid AI backend (G
 1. **Client** (`src/app/page.tsx`) — Single-page chat UI using `useChat` from `@ai-sdk/react`. All application state lives here (projects, chats, messages, model selection).
 2. **Server Actions** (`src/app/actions.ts`) — "use server" functions for all DB reads/writes (CRUD for projects, chats, messages, settings).
 3. **API Routes**:
-   - `POST /api/chat` — Streams LLM responses. Routes to provider based on model name prefix (`gemini` → Google, `qwen` → DashScope, else → Ollama). Applies four-layer context: system prompt → semantic retrieval → summary → recent 20 messages. Gemini models have Google Search grounding enabled automatically.
+   - `POST /api/chat` — Streams LLM responses. Routes to provider based on model name prefix (`gemini` → Google, `qwen` → DashScope, else → Ollama). Applies five-layer context: system prompt → document chunks → semantic retrieval → summary → recent 20 messages. Gemini models have Google Search grounding enabled automatically.
    - `GET /api/models` — Lists available models from all three providers. Caches for 5 minutes.
    - `POST /api/summarize` — Compresses older messages into an LLM-generated summary. Auto-triggers at 30+ messages, keeps last 10 in full detail.
    - `POST /api/embed` — Async embedding generation via Ollama `nomic-embed-text` or Gemini `text-embedding-004` (cloud fallback). Called after each message exchange (best-effort).
    - `GET /api/embed` — Returns embedding status (`available`, `provider`, `embeddingCount`) for a chat or project scope.
    - `POST /api/generate-title` — Auto-generates a concise chat title (3-6 words) after the first AI response. Uses the same provider routing as other routes. Best-effort, fires once when message count reaches 2 and title is still "New Chat".
+   - `POST /api/documents` — Synchronous document upload + processing. Accepts multipart form (`file` + `projectId`). Extracts text (PDF via `unpdf`, DOCX via `mammoth`, text/code via UTF-8), chunks with sentence-aware overlap (2000 chars/chunk, 400 overlap), embeds each chunk via the Ollama/Gemini pipeline, stores in `document_chunks` table. Returns document record with status.
+   - `GET /api/documents` — Lists documents for a project (`?projectId=N`).
+   - `DELETE /api/documents` — Deletes a document and its chunks (cascade) (`?id=N`).
    - `POST /api/classify` — LLM-based conversation topic classification. Triggers after 3+ messages, cached per chat.
 
 ### Component Structure
 
-- `src/components/chat/` — Chat-specific components: `Sidebar` (project/chat navigation, collapsible with icon-only mode, project defaults icon), `MessagesList` (markdown rendering with Framer Motion animations, source URL rendering for grounded responses), `SmoothStreamingWrapper` (ResizeObserver-based smooth height transitions during streaming), `ChatHeader`, `ChatInputArea` (input toolbar with PersonaSelector, system prompt button, semantic memory indicator), `PersonaSuggestionBanner` (smart persona auto-suggestion), `ChatContextMenu`, `MessageActions`, `CodeBlock`
-- `src/components/ui/` — Reusable UI: `CommandPalette` (Cmd+K), `PersonaSelector` (6 built-in presets + 5 model+persona combos, grouped dropdown with Cloud/Local badges), `ModelSelect`, `SettingsDialog` (tabbed settings with API, Appearance, Model Defaults), `ProjectDefaultsDialog` (per-project persona/model defaults with usage stats), `SystemPromptDialog`, `RenameDialog`, `DeleteConfirmDialog`, `Toaster` (sonner)
+- `src/components/chat/` — Chat-specific components: `Sidebar` (project/chat navigation, collapsible with icon-only mode, project defaults + documents icons), `MessagesList` (markdown rendering with Framer Motion animations, source URL rendering for grounded responses), `SmoothStreamingWrapper` (ResizeObserver-based smooth height transitions during streaming), `ChatHeader`, `ChatInputArea` (input toolbar with PersonaSelector, system prompt button, semantic memory indicator), `PersonaSuggestionBanner` (smart persona auto-suggestion), `ChatContextMenu`, `MessageActions`, `CodeBlock`
+- `src/components/ui/` — Reusable UI: `CommandPalette` (Cmd+K), `PersonaSelector` (6 built-in presets + 5 model+persona combos, grouped dropdown with Cloud/Local badges), `ModelSelect`, `SettingsDialog` (tabbed settings with API, Appearance, Model Defaults), `ProjectDefaultsDialog` (per-project persona/model defaults with usage stats), `ProjectDocumentsDialog` (upload, list, delete project documents for RAG), `SystemPromptDialog`, `RenameDialog`, `DeleteConfirmDialog`, `Toaster` (sonner)
 - `src/components/settings/` — Settings tab components: `ApiSettingsTab` (Gemini key, DashScope key, Ollama URL + test), `AppearanceSettingsTab` (theme, font size, density), `ModelDefaultsSettingsTab` (default model, system prompt, persona management)
 - `src/hooks/` — `useLocalStorage<T>` (generic localStorage with SSR safety, deferred hydration to avoid mismatch), `usePersonas` (persona management with combo presets), `useCollapseState` (sidebar section state), `useAppearanceSettings` (font size + message density), `useSmartDefaults` (three-layer persona suggestion: project defaults → usage patterns → keyword heuristics)
-- `src/lib/` — `utils.ts` (`cn()` via clsx + tailwind-merge), `formatTime.ts` (relative timestamps), `settings.ts` (server-side DB-first/env-fallback settings helper), `embeddings.ts` (hybrid Ollama/Gemini embedding generation, cosine similarity, vector search), `topicDetection.ts` (keyword-based conversation topic heuristics)
+- `src/lib/` — `utils.ts` (`cn()` via clsx + tailwind-merge), `formatTime.ts` (relative timestamps), `settings.ts` (server-side DB-first/env-fallback settings helper), `embeddings.ts` (hybrid Ollama/Gemini embedding generation, cosine similarity, vector search for messages + document chunks), `chunking.ts` (overlapping sentence-aware text chunker for document RAG), `topicDetection.ts` (keyword-based conversation topic heuristics)
 
 ### Database
 
 SQLite via libSQL (`@libsql/client`) with Drizzle ORM (`drizzle-orm/libsql`). Schema at `src/db/schema.ts`, connection at `src/db/index.ts`. Uses `file:sqlite.db` locally, `TURSO_DATABASE_URL` on Vercel. Drizzle config (`drizzle.config.ts`) uses `dialect: "turso"`.
 
-Seven tables: `projects` → `chats` → `messages` (cascade deletes), `settings` (key-value store), `messageEmbeddings` (vector storage for semantic memory), `personaUsage` (persona/model tracking), `chatTopics` (detected conversation topics). Key chat fields: `archived` (soft delete), `systemPrompt`, `summary`, `summaryUpToMessageId`. Key project fields: `defaultPersonaId`, `defaultModel`. Settings table: `key` (text PK), `value` (text), `updatedAt` (timestamp).
+Nine tables: `projects` → `chats` → `messages` (cascade deletes), `settings` (key-value store), `messageEmbeddings` (vector storage for semantic memory), `documents` (uploaded files per project), `documentChunks` (chunked text with 768-dim embeddings for document RAG), `personaUsage` (persona/model tracking), `chatTopics` (detected conversation topics). Key chat fields: `archived` (soft delete), `systemPrompt`, `summary`, `summaryUpToMessageId`. Key project fields: `defaultPersonaId`, `defaultModel`. Key document fields: `projectId`, `filename`, `mimeType`, `fileSize`, `charCount`, `chunkCount`, `status` ('processing'|'ready'|'error'). Key chunk fields: `documentId`, `projectId`, `chunkIndex`, `content`, `embedding` (nullable JSON 768-dim vector). Settings table: `key` (text PK), `value` (text), `updatedAt` (timestamp).
 
 ### State Management
 
@@ -99,13 +102,14 @@ Tailwind CSS v4 with a glassmorphism design system. Key patterns:
 
 ### Context Management
 
-The `/api/chat` route builds context using four layers (in order):
+The `/api/chat` route builds context using five layers (in order):
 1. **System prompt** — Always included, never trimmed
-2. **Semantic retrieval** — Embeds the latest user message (Ollama `nomic-embed-text` with Gemini `text-embedding-004` cloud fallback, using `'query'` task type), finds top-5 similar past messages (cosine similarity ≥ 0.7) scoped to the current project. Injected as synthetic user/assistant context messages.
-3. **Summary** — Compressed older messages (auto-triggers at 30+ messages, keeps last 10 in full)
-4. **Recent messages** — Last 20 messages in full detail
+2. **Document retrieval** — If the chat belongs to a project with uploaded documents, finds top-3 similar document chunks (cosine similarity ≥ 0.5) scoped to the project via `findSimilarDocumentChunks()`. Injected as synthetic user/assistant context messages before semantic memory. Lower threshold than messages (0.5 vs 0.7) because document content is more diverse.
+3. **Semantic retrieval** — Embeds the latest user message (Ollama `nomic-embed-text` with Gemini `text-embedding-004` cloud fallback, using `'query'` task type), finds top-5 similar past messages (cosine similarity ≥ 0.7) scoped to the current project. Injected as synthetic user/assistant context messages.
+4. **Summary** — Compressed older messages (auto-triggers at 30+ messages, keeps last 10 in full)
+5. **Recent messages** — Last 20 messages in full detail
 
-All layers degrade gracefully. If both Ollama and Gemini are unavailable, semantic retrieval is silently skipped.
+All layers degrade gracefully. If both Ollama and Gemini are unavailable, semantic retrieval and document retrieval are silently skipped.
 
 ### Google Search Grounding
 
@@ -124,6 +128,29 @@ Both providers produce 768-dim vectors, so embeddings from either source are ful
 Retrieval uses brute-force cosine similarity (fast up to ~50K vectors). The `ChatInputArea` toolbar shows a brain icon indicator: green with embedding count and provider name ("Ollama" or "Gemini") when active, gray "Memory off" when neither provider is available.
 
 **Requires at least one of**: `ollama pull nomic-embed-text` (local) or a Gemini API key (cloud fallback).
+
+### Document RAG
+
+Project-scoped document upload and retrieval-augmented generation. Users upload documents via the `ProjectDocumentsDialog` (opened from a `FileText` icon on each project row in the sidebar).
+
+**Upload pipeline** (`POST /api/documents` — synchronous):
+1. Accept multipart form (`file` + `projectId`), validate (≤10MB, supported types)
+2. Extract text: PDF via `unpdf`, DOCX via `mammoth`, text/code via UTF-8 (reuses same logic as `/api/extract`)
+3. Create `documents` record (status: `'processing'`)
+4. Chunk text via `chunkText()` from `src/lib/chunking.ts` — 2000 chars/chunk, 400 chars overlap, sentence-boundary aware (breaks at `. `, `.\n`, `! `, `? `, `\n\n` within last 20% of chunk)
+5. Save chunks to `document_chunks` table
+6. Generate 768-dim embedding for each chunk via `generateEmbedding(content, 'document')` (Ollama/Gemini)
+7. Update document status to `'ready'` with `chunkCount`
+
+**Retrieval** (in `/api/chat` route):
+- After generating the query embedding, calls `findSimilarDocumentChunks(queryEmbedding, projectId, 3, 0.5)`
+- Loads all embedded chunks for the project, computes cosine similarity
+- Top-3 chunks above 0.5 threshold injected as `[Relevant information from project documents]` context
+- Document context is injected BEFORE semantic message context (documents take priority)
+
+**Supported file types**: PDF, DOCX, TXT, MD, CSV, and code files (JS, TS, TSX, JSX, PY, JSON, HTML, CSS, Java, C, C++, Go, Rust, Ruby, PHP, Shell, YAML, XML, SQL).
+
+**UI** (`ProjectDocumentsDialog`): Drag-drop upload zone, document list with file type badges, size, chunk count, status icons (spinner/check/error), delete buttons. Footer shows total chunks indexed.
 
 ## Settings System
 
