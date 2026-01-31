@@ -7,7 +7,7 @@ import { DefaultChatTransport } from "ai"
 import { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import { getProjects, createProject, getChats, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateProjectName, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getMessageCount, getChatWithContext, updateChatSystemPrompt, getProjectDefaults, recordPersonaUsage, incrementUsageMessageCount } from "./actions"
+import { getProjects, createProject, getChats, getAllProjectChats, createChat, getChatMessages, saveMessage, deleteProject, updateProjectName, updateChatTitle, getStandaloneChats, createStandaloneChat, deleteChat, moveChatToProject, archiveChat, restoreChat, getArchivedChats, getMessageCount, getChatWithContext, updateChatSystemPrompt, getProjectDefaults, recordPersonaUsage, incrementUsageMessageCount, getProjectChatPreviews } from "./actions"
 import { Sidebar } from "@/components/chat/Sidebar"
 import { ChatHeader } from "@/components/chat/ChatHeader"
 import { ChatInputArea } from "@/components/chat/ChatInputArea"
@@ -24,6 +24,7 @@ import { useLocalStorage } from "@/hooks/useLocalStorage"
 import { useSmartDefaults } from "@/hooks/useSmartDefaults"
 import { usePersonas } from "@/hooks/usePersonas"
 import { PersonaSuggestionBanner } from "@/components/chat/PersonaSuggestionBanner"
+import { ProjectLandingPage } from "@/components/chat/ProjectLandingPage"
 import type { AttachedFile } from "@/lib/fileAttachments"
 import { buildFileMessage } from "@/lib/fileAttachments"
 
@@ -56,6 +57,10 @@ export default function Home() {
   const [chats, setChats] = useState<Chat[]>([])
   const [standaloneChats, setStandaloneChats] = useState<Chat[]>([])
   const [activeChatId, setActiveChatId] = useState<number | null>(null)
+
+  // Project landing page state
+  const [chatPreviews, setChatPreviews] = useState<{ id: number; title: string; preview: string | null; createdAt: Date | null }[]>([])
+  const [chatPreviewsLoading, setChatPreviewsLoading] = useState(false)
 
   // Refs for values used in closures (must be after state declaration)
   const activeChatIdRef = useRef(activeChatId)
@@ -342,6 +347,13 @@ export default function Home() {
     }
   }, [setMessages])
 
+  const refreshChatPreviews = useCallback(async () => {
+    if (activeProjectId) {
+      const previews = await getProjectChatPreviews(activeProjectId)
+      setChatPreviews(previews)
+    }
+  }, [activeProjectId])
+
   // Load Projects and all chats on mount
   useEffect(() => {
     loadProjects()
@@ -350,6 +362,17 @@ export default function Home() {
     loadArchivedChats()
     fetchModels()
   }, [loadProjects, loadStandaloneChats, loadAllProjectChats, loadArchivedChats, fetchModels])
+
+  // Load chat previews when viewing a project (no active chat)
+  useEffect(() => {
+    if (activeProjectId && !activeChatId) {
+      setChatPreviewsLoading(true)
+      getProjectChatPreviews(activeProjectId)
+        .then(setChatPreviews)
+        .catch(console.error)
+        .finally(() => setChatPreviewsLoading(false))
+    }
+  }, [activeProjectId, activeChatId])
 
   // Load Messages and System Prompt when Chat Changes
   useEffect(() => {
@@ -546,12 +569,13 @@ export default function Home() {
       setArchivedChats(archivedChats.filter(c => c.id !== deleteTargetId))
       if (activeChatId === deleteTargetId) setActiveChatId(null)
       setDeleteTargetId(null)
+      refreshChatPreviews()
       toast.success("Chat deleted")
     } catch (e) {
       console.error("Delete failed:", e)
       toast.error("Failed to delete chat")
     }
-  }, [deleteTargetId, chats, standaloneChats, archivedChats, activeChatId])
+  }, [deleteTargetId, chats, standaloneChats, archivedChats, activeChatId, refreshChatPreviews])
 
   const handleRequestRename = useCallback((id: number) => {
     const chat = [...chats, ...standaloneChats, ...archivedChats].find(c => c.id === id)
@@ -568,16 +592,18 @@ export default function Home() {
     setStandaloneChats(standaloneChats.map(c => c.id === renameTarget.id ? { ...c, title: newTitle } : c))
     setArchivedChats(archivedChats.map(c => c.id === renameTarget.id ? { ...c, title: newTitle } : c))
     setRenameTarget(null)
+    refreshChatPreviews()
     toast.success("Chat renamed")
-  }, [renameTarget, chats, standaloneChats, archivedChats])
+  }, [renameTarget, chats, standaloneChats, archivedChats, refreshChatPreviews])
 
   const handleMoveChat = useCallback(async (chatId: number, projectId: number | null) => {
     await moveChatToProject(chatId, projectId)
     // Refresh all chat lists
     loadStandaloneChats()
     loadAllProjectChats()
+    refreshChatPreviews()
     toast.success(projectId ? "Chat moved to project" : "Chat moved to Quick Chats")
-  }, [loadAllProjectChats, loadStandaloneChats])
+  }, [loadAllProjectChats, loadStandaloneChats, refreshChatPreviews])
 
   const handleArchiveChat = useCallback(async (chatId: number) => {
     await archiveChat(chatId)
@@ -706,72 +732,113 @@ export default function Home() {
 
       {/* Main Chat Area */}
       <main className="flex-1 flex flex-col glass-panel rounded-2xl overflow-hidden relative">
-        <ChatHeader
-          chatId={activeChatId}
-          chatTitle={currentChatTitle}
-          models={models}
-          selectedModel={selectedModel}
-          onModelChange={setSelectedModel}
-          onTitleChange={handleUpdateChatTitle}
-        />
-
-        {/* Error Banner */}
-        {error && (
-          <div className="bg-red-500/10 border-b border-red-500/20 px-6 py-2 flex items-center gap-2 text-sm text-red-400">
-            <AlertCircle className="h-4 w-4" />
-            <span>{error}</span>
-            <button onClick={() => setError(null)} className="ml-auto hover:text-red-300">
-              Dismiss
-            </button>
-          </div>
-        )}
-
-        {/* Messages */}
-        <div ref={scrollRef} className={cn(
-          "flex-1 overflow-y-auto p-6",
-          messageDensity === 'compact' && 'space-y-2',
-          messageDensity === 'comfortable' && 'space-y-6',
-          messageDensity === 'spacious' && 'space-y-10',
-        )}>
-          <MessagesList
-            messages={messages as ChatMessage[]}
-            isLoading={isLoading}
-            activeChatId={activeChatId}
-            selectedModel={selectedModel}
-          />
-        </div>
-
-        {/* Smart Persona Suggestion */}
-        {suggestedPersona && smartSuggestion.reason && (
-          <div className="px-4 pt-2">
-            <PersonaSuggestionBanner
-              personaName={suggestedPersona.name}
-              personaIcon={suggestedPersona.icon}
-              reason={smartSuggestion.reason}
-              onApply={handleApplySuggestion}
-              onDismiss={dismissSuggestion}
-              visible={true}
+        {activeChatId ? (
+          <>
+            <ChatHeader
+              chatId={activeChatId}
+              chatTitle={currentChatTitle}
+              models={models}
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+              onTitleChange={handleUpdateChatTitle}
             />
-          </div>
-        )}
 
-        {/* Input Area */}
-        <ChatInputArea
-          input={input}
-          onInputChange={setInput}
-          onSend={handleSendMessage}
-          onFormSubmit={handleFormSubmit}
-          onKeyDown={handleKeyDown}
-          isLoading={isLoading}
-          activeChatId={activeChatId}
-          activeProjectId={activeProjectId}
-          systemPrompt={currentSystemPrompt}
-          onSystemPromptChange={handleSaveSystemPrompt}
-          onSystemPromptClick={() => setSystemPromptDialogOpen(true)}
-          onModelChange={setSelectedModel}
-          attachedFiles={attachedFiles}
-          onFilesChange={setAttachedFiles}
-        />
+            {/* Error Banner */}
+            {error && (
+              <div className="bg-red-500/10 border-b border-red-500/20 px-6 py-2 flex items-center gap-2 text-sm text-red-400">
+                <AlertCircle className="h-4 w-4" />
+                <span>{error}</span>
+                <button onClick={() => setError(null)} className="ml-auto hover:text-red-300">
+                  Dismiss
+                </button>
+              </div>
+            )}
+
+            {/* Messages */}
+            <div ref={scrollRef} className={cn(
+              "flex-1 overflow-y-auto p-6",
+              messageDensity === 'compact' && 'space-y-2',
+              messageDensity === 'comfortable' && 'space-y-6',
+              messageDensity === 'spacious' && 'space-y-10',
+            )}>
+              <MessagesList
+                messages={messages as ChatMessage[]}
+                isLoading={isLoading}
+                activeChatId={activeChatId}
+                selectedModel={selectedModel}
+              />
+            </div>
+
+            {/* Smart Persona Suggestion */}
+            {suggestedPersona && smartSuggestion.reason && (
+              <div className="px-4 pt-2">
+                <PersonaSuggestionBanner
+                  personaName={suggestedPersona.name}
+                  personaIcon={suggestedPersona.icon}
+                  reason={smartSuggestion.reason}
+                  onApply={handleApplySuggestion}
+                  onDismiss={dismissSuggestion}
+                  visible={true}
+                />
+              </div>
+            )}
+
+            {/* Input Area */}
+            <ChatInputArea
+              input={input}
+              onInputChange={setInput}
+              onSend={handleSendMessage}
+              onFormSubmit={handleFormSubmit}
+              onKeyDown={handleKeyDown}
+              isLoading={isLoading}
+              activeChatId={activeChatId}
+              activeProjectId={activeProjectId}
+              systemPrompt={currentSystemPrompt}
+              onSystemPromptChange={handleSaveSystemPrompt}
+              onSystemPromptClick={() => setSystemPromptDialogOpen(true)}
+              onModelChange={setSelectedModel}
+              attachedFiles={attachedFiles}
+              onFilesChange={setAttachedFiles}
+            />
+          </>
+        ) : activeProjectId ? (
+          <ProjectLandingPage
+            project={projects.find(p => p.id === activeProjectId)!}
+            chatPreviews={chatPreviews}
+            loading={chatPreviewsLoading}
+            onSelectChat={setActiveChatId}
+            onCreateChat={handleCreateChat}
+            onAddFiles={() => handleOpenProjectDocuments(activeProjectId)}
+          />
+        ) : (
+          <>
+            <ChatHeader
+              chatId={activeChatId}
+              chatTitle={currentChatTitle}
+              models={models}
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+              onTitleChange={handleUpdateChatTitle}
+            />
+            <div className="flex-1" />
+            <ChatInputArea
+              input={input}
+              onInputChange={setInput}
+              onSend={handleSendMessage}
+              onFormSubmit={handleFormSubmit}
+              onKeyDown={handleKeyDown}
+              isLoading={isLoading}
+              activeChatId={activeChatId}
+              activeProjectId={activeProjectId}
+              systemPrompt={currentSystemPrompt}
+              onSystemPromptChange={handleSaveSystemPrompt}
+              onSystemPromptClick={() => setSystemPromptDialogOpen(true)}
+              onModelChange={setSelectedModel}
+              attachedFiles={attachedFiles}
+              onFilesChange={setAttachedFiles}
+            />
+          </>
+        )}
       </main>
 
       {/* Command Palette */}

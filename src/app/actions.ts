@@ -26,6 +26,31 @@ export async function getChats(projectId: number) {
   ).orderBy(desc(chats.createdAt)).all()
 }
 
+export async function getProjectChatPreviews(projectId: number) {
+  const projectChats = await db.select().from(chats).where(
+    and(eq(chats.projectId, projectId), eq(chats.archived, false))
+  ).orderBy(desc(chats.createdAt)).all()
+
+  const previews = await Promise.all(
+    projectChats.map(async (chat) => {
+      const firstMsg = await db.select({ content: messages.content })
+        .from(messages)
+        .where(and(eq(messages.chatId, chat.id), eq(messages.role, 'user')))
+        .orderBy(asc(messages.createdAt))
+        .limit(1)
+        .get()
+
+      return {
+        id: chat.id,
+        title: chat.title,
+        preview: firstMsg?.content?.substring(0, 120) ?? null,
+        createdAt: chat.createdAt,
+      }
+    })
+  )
+  return previews
+}
+
 export async function getAllProjectChats() {
   // Get all non-archived chats that belong to a project
   return await db.select().from(chats).where(
