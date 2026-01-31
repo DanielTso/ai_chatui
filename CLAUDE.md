@@ -58,8 +58,8 @@ Atelier AI is a Next.js 16 App Router chat application with hybrid AI backend (G
 
 ### Data Flow
 
-1. **Client** (`src/app/page.tsx`) — Single-page chat UI using `useChat` from `@ai-sdk/react`. All application state lives here (projects, chats, messages, model selection).
-2. **Server Actions** (`src/app/actions.ts`) — "use server" functions for all DB reads/writes (CRUD for projects, chats, messages, settings).
+1. **Client** (`src/app/page.tsx`) — Single-page chat UI using `useChat` from `@ai-sdk/react`. All application state lives here (projects, chats, messages, model selection). Three main view states: **active chat** (full chat UI with header, messages, input), **project landing page** (project name, chat list with previews/dates, "Add files" button), **empty state** (centered Atelier AI logo/branding with always-visible input toolbar). Typing in the empty state auto-creates a standalone quick chat on send.
+2. **Server Actions** (`src/app/actions.ts`) — "use server" functions for all DB reads/writes (CRUD for projects, chats, messages, settings, chat previews).
 3. **API Routes**:
    - `POST /api/chat` — Streams LLM responses. Routes to provider based on model name prefix (`gemini` → Google, `qwen` → DashScope, else → Ollama). Applies five-layer context: system prompt → document chunks → semantic retrieval → summary → recent 20 messages. Gemini models have Google Search grounding enabled automatically.
    - `GET /api/models` — Lists available models from all three providers. Caches for 5 minutes.
@@ -74,8 +74,8 @@ Atelier AI is a Next.js 16 App Router chat application with hybrid AI backend (G
 
 ### Component Structure
 
-- `src/components/chat/` — Chat-specific components: `Sidebar` (project/chat navigation, collapsible with icon-only mode, project defaults + documents icons), `MessagesList` (markdown rendering with Framer Motion animations, source URL rendering for grounded responses), `SmoothStreamingWrapper` (ResizeObserver-based smooth height transitions during streaming), `ChatHeader`, `ChatInputArea` (input toolbar with PersonaSelector, system prompt button, semantic memory indicator), `PersonaSuggestionBanner` (smart persona auto-suggestion), `ChatContextMenu`, `MessageActions`, `CodeBlock`
-- `src/components/ui/` — Reusable UI: `CommandPalette` (Cmd+K), `PersonaSelector` (6 built-in presets + 5 model+persona combos, grouped dropdown with Cloud/Local badges), `ModelSelect`, `SettingsDialog` (tabbed settings with API, Appearance, Model Defaults), `ProjectDefaultsDialog` (per-project persona/model defaults with usage stats), `ProjectDocumentsDialog` (upload, list, delete project documents for RAG), `SystemPromptDialog`, `RenameDialog`, `DeleteConfirmDialog`, `Toaster` (sonner)
+- `src/components/chat/` — Chat-specific components: `Sidebar` (project/chat navigation, collapsible with icon-only mode, "Smart Chat" dropdown for quick/project chat creation, project defaults + documents icons), `MessagesList` (markdown rendering with Framer Motion animations, source URL rendering for grounded responses), `SmoothStreamingWrapper` (ResizeObserver-based smooth height transitions during streaming), `ChatHeader` (title-only, editable inline), `ChatInputArea` (always-visible input toolbar with ModelSelect, PersonaSelector, system prompt button, attach button, semantic memory indicator), `ProjectLandingPage` (project view with chat list, previews, and dates), `PersonaSuggestionBanner` (smart persona auto-suggestion), `ChatContextMenu`, `MessageActions`, `CodeBlock`
+- `src/components/ui/` — Reusable UI: `CommandPalette` (Cmd+K), `PersonaSelector` (6 built-in presets + 5 model+persona combos, grouped dropdown with Cloud/Local badges), `ModelSelect`, `SettingsDialog` (tabbed settings with API, Appearance, Model Defaults), `ProjectDefaultsDialog` (per-project persona/model defaults with usage stats), `ProjectDocumentsDialog` (upload, list, delete project documents for RAG), `SystemPromptDialog`, `RenameDialog`, `CreateProjectDialog` (styled Radix dialog replacing native `prompt()`), `DeleteConfirmDialog`, `Toaster` (sonner)
 - `src/components/settings/` — Settings tab components: `ApiSettingsTab` (Gemini key, DashScope key, Ollama URL + test), `AppearanceSettingsTab` (theme, font size, density), `ModelDefaultsSettingsTab` (default model, system prompt, persona management)
 - `src/hooks/` — `useLocalStorage<T>` (generic localStorage with SSR safety, deferred hydration to avoid mismatch), `usePersonas` (persona management with combo presets), `useCollapseState` (sidebar section state), `useAppearanceSettings` (font size + message density), `useSmartDefaults` (three-layer persona suggestion: project defaults → usage patterns → keyword heuristics)
 - `src/lib/` — `utils.ts` (`cn()` via clsx + tailwind-merge), `formatTime.ts` (relative timestamps), `settings.ts` (server-side DB-first/env-fallback settings helper), `embeddings.ts` (hybrid Ollama/Gemini embedding generation, cosine similarity, vector search for messages + document chunks), `chunking.ts` (overlapping sentence-aware text chunker for document RAG), `topicDetection.ts` (keyword-based conversation topic heuristics)
@@ -180,7 +180,20 @@ Three tabs accessed via sidebar Settings button:
 - **Model Defaults**: Default model selector, default system prompt, persona management (view built-in, add/delete custom)
 
 ### Collapsible Sidebar
-The sidebar supports collapsed/expanded states via `useLocalStorage('sidebar-collapsed', false)`. When collapsed, it renders as a narrow icon-only strip with tooltips. Toggle via `PanelLeftClose`/`PanelLeftOpen` buttons.
+The sidebar supports collapsed/expanded states via `useLocalStorage('sidebar-collapsed', false)`. When collapsed, it renders as a narrow icon-only strip with tooltips. Toggle via `PanelLeftClose`/`PanelLeftOpen` buttons. The "Smart Chat" button (Zap icon) opens a Radix `DropdownMenu` with "Quick Chat" (standalone) and each project as a destination — works in both expanded and collapsed modes.
+
+### Project Landing Page
+When a user clicks a project in the sidebar (without selecting a chat), the main area displays a `ProjectLandingPage` component showing:
+- Project name header with folder icon and "Add files" button (opens `ProjectDocumentsDialog`)
+- Dashed "+ New chat in {projectName}" action row
+- Scrollable list of non-archived chats with title (bold), first user message preview (truncated to 120 chars, muted), and short date (e.g. "Jan 30")
+- Empty state ("No chats yet") when project has no chats
+- Loading skeleton while fetching previews
+
+Chat previews are fetched via `getProjectChatPreviews(projectId)` server action and refresh after create/delete/rename/move operations.
+
+### Input Toolbar
+The `ChatInputArea` toolbar (ModelSelect, PersonaSelector, System Prompt, Attach, semantic memory indicator) is **always visible** — including the empty state with no active chat. The model selector was moved from `ChatHeader` to the input toolbar so it's accessible before starting a conversation. The textarea is always enabled; sending a message with no active chat auto-creates a standalone quick chat.
 
 ## AI SDK v6 Implementation Details
 
@@ -282,7 +295,7 @@ beforeEach(async () => { await createTestDb() }) // Fresh DB per test (async —
 Config: `playwright.config.ts`. Tests in `e2e/`. Chromium only. Auto-starts dev server via `webServer` config.
 
 **Key behaviors:**
-- Textarea is disabled until a chat is selected — tests must click "New Chat" first
+- Textarea is always enabled — sending a message with no active chat auto-creates a standalone quick chat
 - Command palette opens with `Control+k` (not `Meta+k` on Linux), closes with `Control+k` toggle or backdrop click
 - The `CommandPalette` component renders a plain `div`, not a `dialog` element — locate by content (e.g., `getByPlaceholder('Type a command or search...')`)
 
