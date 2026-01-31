@@ -1,7 +1,7 @@
 import { embed } from 'ai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { getOllamaBaseUrl, getGeminiApiKey, isCloudEnvironment } from './settings'
-import { saveMessageEmbedding, getEmbeddingsForChat, getEmbeddingsForProject, getAllEmbeddings } from '@/app/actions'
+import { saveMessageEmbedding, getEmbeddingsForChat, getEmbeddingsForProject, getAllEmbeddings, getDocumentChunksForProject } from '@/app/actions'
 
 const EMBEDDING_MODEL = 'nomic-embed-text'
 const GEMINI_EMBEDDING_MODEL = 'text-embedding-004'
@@ -169,6 +169,34 @@ export async function findSimilarMessages(
   })
 
   // Filter and sort
+  return scored
+    .filter(s => s.similarity >= threshold)
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, topK)
+}
+
+/**
+ * Find document chunks semantically similar to the query embedding.
+ * Searches within a specific project's uploaded documents.
+ */
+export async function findSimilarDocumentChunks(
+  queryEmbedding: number[],
+  projectId: number,
+  topK: number = 3,
+  threshold: number = 0.5
+): Promise<{ content: string; similarity: number; chunkId: number; documentId: number }[]> {
+  const chunks = await getDocumentChunksForProject(projectId)
+
+  const scored = chunks.map(c => {
+    const vector = JSON.parse(c.embedding!) as number[]
+    return {
+      content: c.content,
+      similarity: cosineSimilarity(queryEmbedding, vector),
+      chunkId: c.id,
+      documentId: c.documentId,
+    }
+  })
+
   return scored
     .filter(s => s.similarity >= threshold)
     .sort((a, b) => b.similarity - a.similarity)

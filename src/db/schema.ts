@@ -54,6 +54,36 @@ export const messageEmbeddings = sqliteTable('message_embeddings', {
   projectIdIdx: index('idx_embeddings_project_id').on(table.projectId),
 }));
 
+// Document RAG: uploaded documents per project
+export const documents = sqliteTable('documents', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  projectId: integer('project_id').references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  filename: text('filename').notNull(),
+  mimeType: text('mime_type').notNull(),
+  fileSize: integer('file_size').notNull(),
+  charCount: integer('char_count').notNull(),
+  chunkCount: integer('chunk_count').default(0),
+  status: text('status').notNull().default('processing'), // 'processing' | 'ready' | 'error'
+  errorMessage: text('error_message'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+}, (table) => ({
+  projectIdIdx: index('idx_documents_project_id').on(table.projectId),
+}));
+
+// Document RAG: chunked text with embeddings
+export const documentChunks = sqliteTable('document_chunks', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  documentId: integer('document_id').references(() => documents.id, { onDelete: 'cascade' }).notNull(),
+  projectId: integer('project_id').references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  chunkIndex: integer('chunk_index').notNull(),
+  content: text('content').notNull(),
+  embedding: text('embedding'), // JSON 768-dim vector, nullable until processed
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+}, (table) => ({
+  documentIdIdx: index('idx_chunks_document_id').on(table.documentId),
+  projectIdIdx: index('idx_chunks_project_id').on(table.projectId),
+}));
+
 // Persona usage tracking
 export const personaUsage = sqliteTable('persona_usage', {
   id: integer('id').primaryKey({ autoIncrement: true }),

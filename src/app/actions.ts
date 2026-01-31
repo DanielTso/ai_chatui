@@ -1,7 +1,7 @@
 'use server'
 
 import { db } from '@/db'
-import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics } from '@/db/schema'
+import { projects, chats, messages, settings, messageEmbeddings, personaUsage, chatTopics, documents, documentChunks } from '@/db/schema'
 import { eq, desc, isNull, isNotNull, and, gt, asc, count, inArray } from 'drizzle-orm'
 
 export async function getProjects() {
@@ -333,5 +333,78 @@ export async function getChatTopics(chatId: number) {
   return await db.select().from(chatTopics)
     .where(eq(chatTopics.chatId, chatId))
     .orderBy(desc(chatTopics.confidence))
+    .all()
+}
+
+// ── Document RAG Actions ──
+
+export async function createDocument(data: {
+  projectId: number
+  filename: string
+  mimeType: string
+  fileSize: number
+  charCount: number
+}) {
+  return await db.insert(documents).values({
+    projectId: data.projectId,
+    filename: data.filename,
+    mimeType: data.mimeType,
+    fileSize: data.fileSize,
+    charCount: data.charCount,
+    status: 'processing',
+  }).returning()
+}
+
+export async function updateDocumentStatus(
+  id: number,
+  status: 'ready' | 'error',
+  updates?: { chunkCount?: number; errorMessage?: string }
+) {
+  return await db.update(documents)
+    .set({ status, ...updates })
+    .where(eq(documents.id, id))
+    .returning()
+}
+
+export async function getProjectDocuments(projectId: number) {
+  return await db.select().from(documents)
+    .where(eq(documents.projectId, projectId))
+    .orderBy(desc(documents.createdAt))
+    .all()
+}
+
+export async function deleteDocument(id: number) {
+  await db.delete(documents).where(eq(documents.id, id))
+}
+
+export async function saveDocumentChunks(chunks: {
+  documentId: number
+  projectId: number
+  chunkIndex: number
+  content: string
+}[]) {
+  const results = []
+  for (const chunk of chunks) {
+    const result = await db.insert(documentChunks).values(chunk).returning()
+    results.push(result[0])
+  }
+  return results
+}
+
+export async function updateChunkEmbedding(chunkId: number, embedding: number[]) {
+  return await db.update(documentChunks)
+    .set({ embedding: JSON.stringify(embedding) })
+    .where(eq(documentChunks.id, chunkId))
+    .returning()
+}
+
+export async function getDocumentChunksForProject(projectId: number) {
+  return await db.select().from(documentChunks)
+    .where(
+      and(
+        eq(documentChunks.projectId, projectId),
+        isNotNull(documentChunks.embedding)
+      )
+    )
     .all()
 }

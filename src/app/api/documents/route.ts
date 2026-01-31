@@ -1,0 +1,165 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createDocument, updateDocumentStatus, saveDocumentChunks, updateChunkEmbedding, getProjectDocuments, deleteDocument } from '@/app/actions'
+import { generateEmbedding, ensureEmbeddingModel } from '@/lib/embeddings'
+import { chunkText } from '@/lib/chunking'
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+const MAX_TEXT_LENGTH = 100_000
+
+const SUPPORTED_EXTENSIONS = new Set([
+  'pdf', 'docx',
+  'txt', 'md', 'csv',
+  'py', 'js', 'ts', 'tsx', 'jsx',
+  'json', 'html', 'css',
+  'java', 'c', 'cpp', 'go', 'rs', 'rb', 'php',
+  'sh', 'yaml', 'yml', 'xml', 'sql',
+])
+
+const TEXT_MIME_PREFIXES = ['text/', 'application/json', 'application/xml']
+
+function getExtension(filename: string): string {
+  return filename.split('.').pop()?.toLowerCase() ?? ''
+}
+
+function isSupported(filename: string, mimeType: string): boolean {
+  const ext = getExtension(filename)
+  if (SUPPORTED_EXTENSIONS.has(ext)) return true
+  if (TEXT_MIME_PREFIXES.some(p => mimeType.startsWith(p))) return true
+  return false
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const formData = await request.formData()
+    const file = formData.get('file') as File | null
+    const projectId = Number(formData.get('projectId'))
+
+    if (!file) {
+      return NextResponse.json({ error: 'No file provided' }, { status: 400 })
+    }
+    if (!projectId || isNaN(projectId)) {
+      return NextResponse.json({ error: 'Invalid projectId' }, { status: 400 })
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: `File too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB.` },
+        { status: 400 }
+      )
+    }
+    if (!isSupported(file.name, file.type)) {
+      return NextResponse.json(
+        { error: `Unsupported file type: ${file.name}. Supported: PDF, DOCX, and text/code files.` },
+        { status: 400 }
+      )
+    }
+
+    // Check embedding availability upfront
+    const { available } = await ensureEmbeddingModel()
+    if (!available) {
+      return NextResponse.json(
+        { error: 'No embedding provider available. Configure Ollama with nomic-embed-text or set a Gemini API key.' },
+        { status: 503 }
+      )
+    }
+
+    // Extract text from file
+    const ext = getExtension(file.name)
+    const buffer = Buffer.from(await file.arrayBuffer())
+    let textContent = ''
+
+    if (ext === 'pdf') {
+      const { extractText } = await import('unpdf')
+      const result = await extractText(new Uint8Array(buffer))
+      textContent = result.text.join('\n')
+    } else if (ext === 'docx') {
+      const mammoth = await import('mammoth')
+      const result = await mammoth.extractRawText({ buffer })
+      textContent = result.value
+    } else {
+      textContent = buffer.toString('utf-8')
+    }
+
+    if (textContent.length > MAX_TEXT_LENGTH) {
+      textContent = textContent.slice(0, MAX_TEXT_LENGTH)
+    }
+
+    if (!textContent.trim()) {
+      return NextResponse.json({ error: 'No text content could be extracted from the file.' }, { status: 400 })
+    }
+
+    // Create document record
+    const [doc] = await createDocument({
+      projectId,
+      filename: file.name,
+      mimeType: file.type || 'application/octet-stream',
+      fileSize: file.size,
+      charCount: textContent.length,
+    })
+
+    try {
+      // Chunk text
+      const textChunks = chunkText(textContent)
+
+      // Save chunks to DB
+      const savedChunks = await saveDocumentChunks(
+        textChunks.map(c => ({
+          documentId: doc.id,
+          projectId,
+          chunkIndex: c.index,
+          content: c.content,
+        }))
+      )
+
+      // Generate and store embeddings for each chunk
+      for (const chunk of savedChunks) {
+        try {
+          const embedding = await generateEmbedding(chunk.content, 'document')
+          await updateChunkEmbedding(chunk.id, embedding)
+        } catch (e) {
+          console.error(`[Documents] Failed to embed chunk ${chunk.id}:`, e)
+          // Continue with other chunks even if one fails
+        }
+      }
+
+      // Update document status to ready
+      await updateDocumentStatus(doc.id, 'ready', { chunkCount: savedChunks.length })
+
+      // Return the updated document
+      return NextResponse.json({
+        ...doc,
+        status: 'ready',
+        chunkCount: savedChunks.length,
+      })
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Processing failed'
+      await updateDocumentStatus(doc.id, 'error', { errorMessage: message })
+      return NextResponse.json({ error: `Document processing failed: ${message}` }, { status: 500 })
+    }
+  } catch (error) {
+    console.error('[Documents] Error:', error)
+    return NextResponse.json(
+      { error: 'Failed to process document.' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function GET(request: NextRequest) {
+  const projectId = Number(request.nextUrl.searchParams.get('projectId'))
+  if (!projectId || isNaN(projectId)) {
+    return NextResponse.json({ error: 'Invalid projectId' }, { status: 400 })
+  }
+
+  const docs = await getProjectDocuments(projectId)
+  return NextResponse.json({ documents: docs })
+}
+
+export async function DELETE(request: NextRequest) {
+  const id = Number(request.nextUrl.searchParams.get('id'))
+  if (!id || isNaN(id)) {
+    return NextResponse.json({ error: 'Invalid document id' }, { status: 400 })
+  }
+
+  await deleteDocument(id)
+  return NextResponse.json({ success: true })
+}

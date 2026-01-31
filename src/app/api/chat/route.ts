@@ -4,7 +4,7 @@ import { createOllama } from 'ai-sdk-ollama';
 import { streamText, convertToModelMessages, type UIMessage } from 'ai';
 import { getChatWithContext } from '@/app/actions';
 import { getGeminiApiKey, getOllamaBaseUrl, getDashScopeApiKey } from '@/lib/settings';
-import { generateEmbedding, findSimilarMessages } from '@/lib/embeddings';
+import { generateEmbedding, findSimilarMessages, findSimilarDocumentChunks } from '@/lib/embeddings';
 
 // Configuration for hybrid context management
 const RECENT_MESSAGES_LIMIT = 20; // Keep last N messages in full detail
@@ -51,6 +51,7 @@ export async function POST(req: Request) {
     let contextMessages = messages as UIMessage[];
     let systemPrompt: string | undefined;
     let semanticContext: string | null = null;
+    let documentContext: string | null = null;
 
     if (chatId) {
       const chat = await getChatWithContext(chatId);
@@ -60,7 +61,7 @@ export async function POST(req: Request) {
         systemPrompt = chat.systemPrompt;
       }
 
-      // 2. Semantic retrieval (NEW) — find relevant past messages
+      // 2. Semantic retrieval — find relevant past messages + document chunks
       try {
         const userMessages = (messages as UIMessage[]).filter(m => m.role === 'user');
         const lastUserMessage = userMessages[userMessages.length - 1];
@@ -72,17 +73,32 @@ export async function POST(req: Request) {
 
           if (queryText) {
             const queryEmbedding = await generateEmbedding(queryText, 'query');
+
+            // Message semantic retrieval
             const similar = await findSimilarMessages(queryEmbedding, {
               projectId: chat?.projectId ?? undefined,
               chatId: !chat?.projectId ? chatId : undefined,
             }, 5, 0.7);
 
-            // Filter out messages already in the recent window
             const recentIds = new Set((messages as UIMessage[]).map((m: UIMessage) => m.id));
             const relevantPast = similar.filter(s => !recentIds.has(String(s.messageId)));
 
             if (relevantPast.length > 0) {
               semanticContext = relevantPast.map(s => s.content).join('\n---\n');
+            }
+
+            // Document chunk retrieval (project-scoped)
+            if (chat?.projectId) {
+              try {
+                const relevantChunks = await findSimilarDocumentChunks(
+                  queryEmbedding, chat.projectId, 3, 0.5
+                );
+                if (relevantChunks.length > 0) {
+                  documentContext = relevantChunks.map(c => c.content).join('\n---\n');
+                }
+              } catch {
+                // Document retrieval is best-effort
+              }
             }
           }
         }
@@ -97,6 +113,28 @@ export async function POST(req: Request) {
 
         // Build context messages array
         const contextPrefix: UIMessage[] = [];
+
+        // Add document context first (highest priority supplemental context)
+        if (documentContext) {
+          contextPrefix.push(
+            {
+              id: 'document-context',
+              role: 'user',
+              parts: [{
+                type: 'text',
+                text: `[Relevant information from project documents]:\n${documentContext}`
+              }]
+            },
+            {
+              id: 'document-ack',
+              role: 'assistant',
+              parts: [{
+                type: 'text',
+                text: "I'll use this document context to inform my response."
+              }]
+            }
+          );
+        }
 
         // Add semantic context if available
         if (semanticContext) {
@@ -141,27 +179,53 @@ export async function POST(req: Request) {
         );
 
         contextMessages = [...contextPrefix, ...recentMessages];
-      } else if (semanticContext) {
-        // No summary but semantic context available
-        const semanticPrefix: UIMessage[] = [
-          {
-            id: 'semantic-context',
-            role: 'user',
-            parts: [{
-              type: 'text',
-              text: `[Relevant context from previous conversations]:\n${semanticContext}`
-            }]
-          },
-          {
-            id: 'semantic-ack',
-            role: 'assistant',
-            parts: [{
-              type: 'text',
-              text: "I understand, I'll use this context to inform my response."
-            }]
-          }
-        ];
-        contextMessages = [...semanticPrefix, ...contextMessages];
+      } else if (documentContext || semanticContext) {
+        // No summary but document/semantic context available
+        const contextPrefix: UIMessage[] = [];
+
+        if (documentContext) {
+          contextPrefix.push(
+            {
+              id: 'document-context',
+              role: 'user',
+              parts: [{
+                type: 'text',
+                text: `[Relevant information from project documents]:\n${documentContext}`
+              }]
+            },
+            {
+              id: 'document-ack',
+              role: 'assistant',
+              parts: [{
+                type: 'text',
+                text: "I'll use this document context to inform my response."
+              }]
+            }
+          );
+        }
+
+        if (semanticContext) {
+          contextPrefix.push(
+            {
+              id: 'semantic-context',
+              role: 'user',
+              parts: [{
+                type: 'text',
+                text: `[Relevant context from previous conversations]:\n${semanticContext}`
+              }]
+            },
+            {
+              id: 'semantic-ack',
+              role: 'assistant',
+              parts: [{
+                type: 'text',
+                text: "I understand, I'll use this context to inform my response."
+              }]
+            }
+          );
+        }
+
+        contextMessages = [...contextPrefix, ...contextMessages];
       }
     }
 

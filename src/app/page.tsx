@@ -18,6 +18,7 @@ import { RenameDialog } from "@/components/ui/RenameDialog"
 import { SystemPromptDialog } from "@/components/ui/SystemPromptDialog"
 import { SettingsDialog } from "@/components/ui/SettingsDialog"
 import { ProjectDefaultsDialog } from "@/components/ui/ProjectDefaultsDialog"
+import { ProjectDocumentsDialog } from "@/components/ui/ProjectDocumentsDialog"
 import { useAppearanceSettings } from "@/hooks/useAppearanceSettings"
 import { useLocalStorage } from "@/hooks/useLocalStorage"
 import { useSmartDefaults } from "@/hooks/useSmartDefaults"
@@ -82,6 +83,8 @@ export default function Home() {
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
   const [projectDefaultsDialogOpen, setProjectDefaultsDialogOpen] = useState(false)
   const [projectDefaultsTarget, setProjectDefaultsTarget] = useState<{ id: number; name: string } | null>(null)
+  const [projectDocumentsDialogOpen, setProjectDocumentsDialogOpen] = useState(false)
+  const [projectDocumentsTarget, setProjectDocumentsTarget] = useState<{ id: number; name: string } | null>(null)
 
   // Sidebar collapse
   const [sidebarCollapsed, setSidebarCollapsed] = useLocalStorage('sidebar-collapsed', false)
@@ -644,6 +647,14 @@ export default function Home() {
     }
   }, [projects])
 
+  const handleOpenProjectDocuments = useCallback((projectId: number) => {
+    const project = projects.find(p => p.id === projectId)
+    if (project) {
+      setProjectDocumentsTarget({ id: project.id, name: project.name })
+      setProjectDocumentsDialogOpen(true)
+    }
+  }, [projects])
+
   const handleApplySuggestion = useCallback(async () => {
     if (!suggestedPersona) return
     await handleSaveSystemPrompt(suggestedPersona.prompt || null)
@@ -690,6 +701,7 @@ export default function Home() {
         onDeleteChat={handleRequestDelete}
         onOpenSettings={() => setSettingsDialogOpen(true)}
         onProjectSettings={handleOpenProjectSettings}
+        onProjectDocuments={handleOpenProjectDocuments}
       />
 
       {/* Main Chat Area */}
@@ -824,6 +836,16 @@ export default function Home() {
           projectId={projectDefaultsTarget.id}
           projectName={projectDefaultsTarget.name}
           models={models}
+        />
+      )}
+
+      {/* Project Documents Dialog */}
+      {projectDocumentsTarget && (
+        <ProjectDocumentsDialog
+          open={projectDocumentsDialogOpen}
+          onOpenChange={setProjectDocumentsDialogOpen}
+          projectId={projectDocumentsTarget.id}
+          projectName={projectDocumentsTarget.name}
         />
       )}
     </div>

@@ -1,5 +1,5 @@
 import { memo, useState, useRef, useEffect, useMemo } from "react"
-import { Folder, Plus, Settings, Sun, Moon, MessageSquare, ChevronDown, MessageCircle, Archive, Pencil, Check, X, PanelLeftClose, PanelLeftOpen, SlidersHorizontal } from "lucide-react"
+import { Folder, Plus, Settings, Sun, Moon, MessageSquare, ChevronDown, MessageCircle, Archive, Pencil, Check, X, PanelLeftClose, PanelLeftOpen, SlidersHorizontal, FileText } from "lucide-react"
 import * as Tooltip from "@radix-ui/react-tooltip"
 import { cn } from "@/lib/utils"
 import { ChatContextMenu } from "./ChatContextMenu"
@@ -42,6 +42,7 @@ interface SidebarProps {
   onDeleteChat: (chatId: number) => void
   onOpenSettings: () => void
   onProjectSettings?: (projectId: number) => void
+  onProjectDocuments?: (projectId: number) => void
 }
 
 export const Sidebar = memo(function Sidebar({
@@ -69,6 +70,7 @@ export const Sidebar = memo(function Sidebar({
   onDeleteChat,
   onOpenSettings,
   onProjectSettings,
+  onProjectDocuments,
 }: SidebarProps) {
   // State for inline project editing
   const [editingProjectId, setEditingProjectId] = useState<number | null>(null)
@@ -362,6 +364,18 @@ export const Sidebar = memo(function Sidebar({
                             )}
                           </div>
                           <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            {onProjectDocuments && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  onProjectDocuments(p.id)
+                                }}
+                                className="p-1 hover:text-emerald-400"
+                                title="Project documents"
+                              >
+                                <FileText className="h-3 w-3" />
+                              </button>
+                            )}
                             {onProjectSettings && (
                               <button
                                 onClick={(e) => {
