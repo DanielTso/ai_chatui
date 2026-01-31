@@ -387,3 +387,4 @@ Development session logs with Claude Code are stored in `docs/`. **Before compac
 
 - [`docs/chatlog-2026-01-31-document-rag.md`](docs/chatlog-2026-01-31-document-rag.md) — Document RAG implementation (schema, chunking, embeddings, API, UI, testing, deployment)
 - [`docs/chatlog-2026-01-31-session-cleanup.md`](docs/chatlog-2026-01-31-session-cleanup.md) — Session cleanup: commit, deploy, Turso schema verification
+- [`docs/chatlog-2026-01-31-multimodal-images.md`](docs/chatlog-2026-01-31-multimodal-images.md) — UI refinements (Smart Chat, project landing page, input toolbar, document preview) and multimodal image input support
