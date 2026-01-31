@@ -5,6 +5,7 @@ import { Send, Loader2, FileText, Brain, Paperclip, Upload, X } from 'lucide-rea
 import TextareaAutosize from 'react-textarea-autosize'
 import { toast } from 'sonner'
 import { PersonaSelector } from '@/components/ui/PersonaSelector'
+import { ModelSelect } from '@/components/ui/ModelSelect'
 import type { AttachedFile } from '@/lib/fileAttachments'
 import { formatFileSize, getFileTypeLabel } from '@/lib/fileAttachments'
 
@@ -12,6 +13,12 @@ interface EmbedStatus {
   available: boolean
   provider: 'ollama' | 'gemini' | null
   embeddingCount: number
+}
+
+interface Model {
+  name: string
+  model: string
+  digest: string
 }
 
 interface ChatInputAreaProps {
@@ -26,6 +33,8 @@ interface ChatInputAreaProps {
   systemPrompt: string | null
   onSystemPromptChange: (prompt: string | null) => void
   onSystemPromptClick: () => void
+  models?: Model[]
+  selectedModel?: string
   onModelChange?: (model: string) => void
   attachedFiles: AttachedFile[]
   onFilesChange: (files: AttachedFile[]) => void
@@ -43,6 +52,8 @@ export const ChatInputArea = memo(function ChatInputArea({
   systemPrompt,
   onSystemPromptChange,
   onSystemPromptClick,
+  models,
+  selectedModel,
   onModelChange,
   attachedFiles,
   onFilesChange,
@@ -180,62 +191,67 @@ export const ChatInputArea = memo(function ChatInputArea({
       )}
 
       <div className="max-w-3xl xl:max-w-4xl 2xl:max-w-5xl mx-auto">
-        {/* Toolbar row with PersonaSelector, System Prompt button, and Attach button */}
-        {activeChatId && (
-          <div className="flex items-center gap-2 mb-2 px-1">
-            <PersonaSelector
-              currentPrompt={systemPrompt}
-              onSelect={onSystemPromptChange}
-              onCustomize={onSystemPromptClick}
-              onModelChange={onModelChange}
-              disabled={!activeChatId}
-              side="top"
+        {/* Toolbar row with Model, PersonaSelector, System Prompt, and Attach */}
+        <div className="flex items-center gap-2 mb-2 px-1">
+          {models && selectedModel && onModelChange && (
+            <ModelSelect
+              models={models}
+              value={selectedModel}
+              onChange={onModelChange}
             />
-            <button
-              onClick={onSystemPromptClick}
-              className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-white/10 transition-colors"
-              title="Edit system prompt"
-            >
-              <FileText className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">System Prompt</span>
-            </button>
+          )}
+          <PersonaSelector
+            currentPrompt={systemPrompt}
+            onSelect={onSystemPromptChange}
+            onCustomize={onSystemPromptClick}
+            onModelChange={onModelChange}
+            disabled={false}
+            side="top"
+          />
+          <button
+            onClick={onSystemPromptClick}
+            className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-white/10 transition-colors"
+            title="Edit system prompt"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">System Prompt</span>
+          </button>
 
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={!activeChatId || isLoading}
-              className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-white/10 transition-colors disabled:opacity-50"
-              title="Attach file (PDF, DOCX, text, code)"
-            >
-              <Paperclip className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Attach</span>
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              accept=".pdf,.docx,.txt,.md,.csv,.py,.js,.ts,.tsx,.jsx,.json,.html,.css,.java,.c,.cpp,.go,.rs,.rb,.php,.sh,.yaml,.yml,.xml,.sql"
-              onChange={handleFileInputChange}
-            />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading}
+            className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-white/10 transition-colors disabled:opacity-50"
+            title="Attach file (PDF, DOCX, text, code)"
+          >
+            <Paperclip className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Attach</span>
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            accept=".pdf,.docx,.txt,.md,.csv,.py,.js,.ts,.tsx,.jsx,.json,.html,.css,.java,.c,.cpp,.go,.rs,.rb,.php,.sh,.yaml,.yml,.xml,.sql"
+            onChange={handleFileInputChange}
+          />
 
-            {/* Semantic memory status indicator */}
-            {embedStatus && (
-              <div
-                className="ml-auto flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs text-muted-foreground"
-                title={embedStatus.available
-                  ? `Semantic memory active via ${embedStatus.provider === 'gemini' ? 'Gemini' : 'Ollama'} — ${embedStatus.embeddingCount} embeddings stored`
-                  : 'Semantic memory offline — configure Ollama or Gemini API key'}
-              >
-                <Brain className={`h-3.5 w-3.5 ${embedStatus.available ? 'text-emerald-400' : 'text-muted-foreground/50'}`} />
-                <span className="hidden sm:inline">
-                  {embedStatus.available
-                    ? `${embedStatus.embeddingCount} memories (${embedStatus.provider === 'gemini' ? 'Gemini' : 'Ollama'})`
-                    : 'Memory off'}
-                </span>
-              </div>
-            )}
-          </div>
-        )}
+          {/* Semantic memory status indicator */}
+          {embedStatus && (
+            <div
+              className="ml-auto flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs text-muted-foreground"
+              title={embedStatus.available
+                ? `Semantic memory active via ${embedStatus.provider === 'gemini' ? 'Gemini' : 'Ollama'} — ${embedStatus.embeddingCount} embeddings stored`
+                : 'Semantic memory offline — configure Ollama or Gemini API key'}
+            >
+              <Brain className={`h-3.5 w-3.5 ${embedStatus.available ? 'text-emerald-400' : 'text-muted-foreground/50'}`} />
+              <span className="hidden sm:inline">
+                {embedStatus.available
+                  ? `${embedStatus.embeddingCount} memories (${embedStatus.provider === 'gemini' ? 'Gemini' : 'Ollama'})`
+                  : 'Memory off'}
+              </span>
+            </div>
+          )}
+        </div>
 
         {/* Attached files chips */}
         {(hasFiles || isExtracting) && (

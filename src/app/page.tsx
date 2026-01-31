@@ -791,9 +791,6 @@ export default function Home() {
             <ChatHeader
               chatId={activeChatId}
               chatTitle={currentChatTitle}
-              models={models}
-              selectedModel={selectedModel}
-              onModelChange={setSelectedModel}
               onTitleChange={handleUpdateChatTitle}
             />
 
@@ -850,6 +847,8 @@ export default function Home() {
               systemPrompt={currentSystemPrompt}
               onSystemPromptChange={handleSaveSystemPrompt}
               onSystemPromptClick={() => setSystemPromptDialogOpen(true)}
+              models={models}
+              selectedModel={selectedModel}
               onModelChange={setSelectedModel}
               attachedFiles={attachedFiles}
               onFilesChange={setAttachedFiles}
@@ -885,6 +884,8 @@ export default function Home() {
               systemPrompt={currentSystemPrompt}
               onSystemPromptChange={handleSaveSystemPrompt}
               onSystemPromptClick={() => setSystemPromptDialogOpen(true)}
+              models={models}
+              selectedModel={selectedModel}
               onModelChange={setSelectedModel}
               attachedFiles={attachedFiles}
               onFilesChange={setAttachedFiles}

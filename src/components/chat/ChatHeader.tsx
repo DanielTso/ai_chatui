@@ -2,29 +2,16 @@
 
 import { memo, useState, useRef, useEffect } from "react"
 import { MessageSquare, Edit2, Check, X } from "lucide-react"
-import { ModelSelect } from "@/components/ui/ModelSelect"
-
-interface Model {
-  name: string
-  model: string
-  digest: string
-}
 
 interface ChatHeaderProps {
   chatId: number | null
   chatTitle: string | undefined
-  models: Model[]
-  selectedModel: string
-  onModelChange: (model: string) => void
   onTitleChange?: (id: number, title: string) => void
 }
 
 export const ChatHeader = memo(function ChatHeader({
   chatId,
   chatTitle,
-  models,
-  selectedModel,
-  onModelChange,
   onTitleChange,
 }: ChatHeaderProps) {
   const [isEditing, setIsEditing] = useState(false)
@@ -110,14 +97,6 @@ export const ChatHeader = memo(function ChatHeader({
             )}
           </div>
         )}
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">Model:</span>
-        <ModelSelect
-          models={models}
-          value={selectedModel}
-          onChange={onModelChange}
-        />
       </div>
     </header>
   )
