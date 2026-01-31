@@ -75,7 +75,7 @@ Atelier AI is a Next.js 16 App Router chat application with hybrid AI backend (G
 ### Component Structure
 
 - `src/components/chat/` — Chat-specific components: `Sidebar` (project/chat navigation, collapsible with icon-only mode, "Smart Chat" dropdown for quick/project chat creation, project defaults + documents icons), `MessagesList` (markdown rendering with Framer Motion animations, source URL rendering for grounded responses), `SmoothStreamingWrapper` (ResizeObserver-based smooth height transitions during streaming), `ChatHeader` (title-only, editable inline), `ChatInputArea` (always-visible input toolbar with ModelSelect, PersonaSelector, system prompt button, attach button, semantic memory indicator), `ProjectLandingPage` (two-column project view: chat list left, files panel right with document cards, progress bar, indexing status; fetches documents internally via `/api/documents`), `PersonaSuggestionBanner` (smart persona auto-suggestion), `ChatContextMenu`, `MessageActions`, `CodeBlock`
-- `src/components/ui/` — Reusable UI: `CommandPalette` (Cmd+K), `PersonaSelector` (6 built-in presets + 5 model+persona combos, grouped dropdown with Cloud/Local badges), `ModelSelect`, `SettingsDialog` (tabbed settings with API, Appearance, Model Defaults), `ProjectDefaultsDialog` (per-project persona/model defaults with usage stats), `ProjectDocumentsDialog` (upload, list, delete project documents for RAG), `SystemPromptDialog`, `RenameDialog`, `CreateProjectDialog` (styled Radix dialog replacing native `prompt()`), `DeleteConfirmDialog`, `Toaster` (sonner)
+- `src/components/ui/` — Reusable UI: `CommandPalette` (Cmd+K), `PersonaSelector` (6 built-in presets + 5 model+persona combos, grouped dropdown with Cloud/Local badges), `ModelSelect`, `SettingsDialog` (tabbed settings with API, Appearance, Model Defaults), `ProjectDefaultsDialog` (per-project persona/model defaults with usage stats), `ProjectDocumentsDialog` (upload, list, delete project documents for RAG), `DocumentPreviewDialog` (read-only document preview showing full extracted text from chunks, with overlap deduplication), `SystemPromptDialog`, `RenameDialog`, `CreateProjectDialog` (styled Radix dialog replacing native `prompt()`), `DeleteConfirmDialog`, `Toaster` (sonner)
 - `src/components/settings/` — Settings tab components: `ApiSettingsTab` (Gemini key, DashScope key, Ollama URL + test), `AppearanceSettingsTab` (theme, font size, density), `ModelDefaultsSettingsTab` (default model, system prompt, persona management)
 - `src/hooks/` — `useLocalStorage<T>` (generic localStorage with SSR safety, deferred hydration to avoid mismatch), `usePersonas` (persona management with combo presets), `useCollapseState` (sidebar section state), `useAppearanceSettings` (font size + message density), `useSmartDefaults` (three-layer persona suggestion: project defaults → usage patterns → keyword heuristics)
 - `src/lib/` — `utils.ts` (`cn()` via clsx + tailwind-merge), `formatTime.ts` (relative timestamps), `fileUtils.ts` (shared `formatFileSize()` + `getFileTypeBadge()` used by `ProjectDocumentsDialog` and `ProjectLandingPage`), `settings.ts` (server-side DB-first/env-fallback settings helper), `embeddings.ts` (hybrid Ollama/Gemini embedding generation, cosine similarity, vector search for messages + document chunks), `chunking.ts` (overlapping sentence-aware text chunker for document RAG), `topicDetection.ts` (keyword-based conversation topic heuristics)
@@ -152,7 +152,9 @@ Project-scoped document upload and retrieval-augmented generation. Users upload 
 
 **Supported file types**: PDF, DOCX, TXT, MD, CSV, and code files (JS, TS, TSX, JSX, PY, JSON, HTML, CSS, Java, C, C++, Go, Rust, Ruby, PHP, Shell, YAML, XML, SQL).
 
-**UI** (`ProjectDocumentsDialog`): Drag-drop upload zone, document list with file type badges, size, chunk count, status icons (spinner/check/error), delete buttons. Footer shows total chunks indexed.
+**UI**: Two entry points for document management:
+- `ProjectDocumentsDialog`: Drag-drop upload zone, document list with file type badges, size, chunk count, status icons (spinner/check/error), delete buttons. Footer shows total chunks indexed. Opened from sidebar `FileText` icon or "Upload documents for RAG" link.
+- `DocumentPreviewDialog`: Read-only preview of a document's extracted text. Fetches chunks via `getDocumentChunks(documentId)` server action, deduplicates the 400-char overlap between consecutive chunks, and renders the reconstructed text in a scrollable monospace view. Opened by clicking a file card on the `ProjectLandingPage`.
 
 ## Settings System
 
@@ -195,10 +197,11 @@ When a user clicks a project in the sidebar (without selecting a chat), the main
 - Separated from right column by `lg:border-r`
 
 **Right column** (files panel):
-- "Files" heading with `+` button (opens `ProjectDocumentsDialog`)
+- "Files" heading with "+ File" button (opens native file picker for direct upload)
+- Drag-and-drop upload zone: entire panel is a drop target with visual highlight (`bg-primary/5`) and dashed "Drop file to upload" hint; uploads directly via `POST /api/documents`
 - Progress bar: green when all documents ready, amber when indexing; status indicator with `CheckCircle2` or spinning `Loader2`
 - Total chunks indexed count
-- File card grid (`grid-cols-2 xl:grid-cols-3`): colored type badge pill, truncated filename, chunk count + file size; click opens `ProjectDocumentsDialog`
+- File card grid (`grid-cols-2 xl:grid-cols-3`): colored type badge pill, truncated filename, chunk count + file size; click opens `DocumentPreviewDialog` (read-only preview of extracted text with chunk overlap deduplication via `getDocumentChunks()` server action)
 - Empty state: upload icon + "No files yet" + "Upload documents for RAG" link
 - Documents fetched internally via `GET /api/documents?projectId=N` (no new props needed)
 
